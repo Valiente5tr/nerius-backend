@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     mysql_user: str = "root"
     mysql_root_password: str | None = None
     mysql_database: str | None = None
+    session_expire_days: int = 30  # Session expiration in days
 
     @model_validator(mode="after")
     def build_database_url(self) -> "Settings":

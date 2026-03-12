@@ -1,4 +1,4 @@
-from src.db.models.learning_platform import AnalyticsEvent, Area, Badge, Course, CourseModule, Enrollment, ForumComment, ForumPost, Lesson, LessonProgress, LessonResource, Role, User, UserBadge, UserRole
+from src.db.models.learning_platform import AnalyticsEvent, Area, Badge, Course, CourseAssignment, CourseBadge, CourseModule, Enrollment, ForumComment, ForumPost, Lesson, LessonProgress, LessonResource, Role, Session, User, UserBadge, UserRole
 
 
 __all__ = [
@@ -6,6 +6,8 @@ __all__ = [
 	"Area",
 	"Badge",
 	"Course",
+	"CourseAssignment",
+	"CourseBadge",
 	"CourseModule",
 	"Enrollment",
 	"ForumComment",
@@ -14,6 +16,7 @@ __all__ = [
 	"LessonProgress",
 	"LessonResource",
 	"Role",
+	"Session",
 	"User",
 	"UserBadge",
 	"UserRole",
