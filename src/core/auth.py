@@ -2,12 +2,11 @@
 
 import secrets
 from datetime import datetime, timedelta, timezone
-from functools import lru_cache
 
 from passlib.context import CryptContext
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session as DBSession
 
-from src.db.models.learning_platform import User
+from src.db.models.learning_platform import User, Session
 from src.core.config import settings
 
 
@@ -25,44 +24,81 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-# Session management
-SESSION_STORAGE: dict[str, dict] = {}  # In-memory session storage (use Redis in production)
-
-
-def create_session(user_id: str, user_email: str) -> str:
-    """Create a new session for a user."""
+# Session management using database
+def create_session(
+    user_id: str,
+    db: DBSession,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+) -> str:
+    """Create a new session for a user and store it in the database."""
     session_id = secrets.token_urlsafe(32)
-    SESSION_STORAGE[session_id] = {
-        "user_id": user_id,
-        "email": user_email,
-        "created_at": datetime.now(timezone.utc),
-        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
-    }
+    # Use datetime.utcnow() for naive UTC time (MySQL TIMESTAMP doesn't store timezone)
+    now_utc = datetime.utcnow()
+    expires_at = now_utc + timedelta(days=settings.session_expire_days)
+    
+    session = Session(
+        id=session_id,
+        user_id=user_id,
+        expires_at=expires_at,
+        last_activity_at=now_utc,
+        user_agent=user_agent,
+        ip_address=ip_address,
+    )
+    
+    db.add(session)
+    db.commit()
+    
     return session_id
 
 
-def validate_session(session_id: str) -> dict | None:
+def validate_session(session_id: str, db: DBSession) -> dict | None:
     """Validate a session and return user data if valid."""
-    if session_id not in SESSION_STORAGE:
-        return None
-
-    session = SESSION_STORAGE[session_id]
+    session = db.query(Session).filter(Session.id == session_id).first()
     
-    # Check if session has expired
-    if datetime.now(timezone.utc) > session["expires_at"]:
-        del SESSION_STORAGE[session_id]
+    if not session:
         return None
     
-    return session
+    # Check if session has expired (using naive UTC time)
+    now_utc = datetime.utcnow()
+    if now_utc > session.expires_at:
+        db.delete(session)
+        db.commit()
+        return None
+    
+    # Update last activity
+    session.last_activity_at = now_utc
+    db.commit()
+    
+    return {
+        "user_id": session.user_id,
+        "created_at": session.created_at,
+        "expires_at": session.expires_at,
+    }
 
 
-def invalidate_session(session_id: str) -> None:
-    """Invalidate a session."""
-    if session_id in SESSION_STORAGE:
-        del SESSION_STORAGE[session_id]
+def invalidate_session(session_id: str, db: DBSession) -> None:
+    """Invalidate a session by deleting it from the database."""
+    session = db.query(Session).filter(Session.id == session_id).first()
+    if session:
+        db.delete(session)
+        db.commit()
 
 
-def authenticate_user(email: str, password: str, db: Session) -> User | None:
+def cleanup_expired_sessions(db: DBSession) -> int:
+    """Remove all expired sessions from the database. Returns count of deleted sessions."""
+    now_utc = datetime.utcnow()
+    expired_sessions = db.query(Session).filter(Session.expires_at < now_utc).all()
+    count = len(expired_sessions)
+    
+    for session in expired_sessions:
+        db.delete(session)
+    
+    db.commit()
+    return count
+
+
+def authenticate_user(email: str, password: str, db: DBSession) -> User | None:
     """Authenticate a user with email and password."""
     user = db.query(User).filter(User.email == email).first()
     if not user:

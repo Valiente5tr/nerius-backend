@@ -4,14 +4,20 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Cookie
+from fastapi import APIRouter, Depends, HTTPException, Cookie, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from src.core.auth import validate_session
 from src.db.session import get_db
 from src.db.models.learning_platform import (
+    Area,
     User,
+    Role,
+    UserRole,
+    RoleName,
     Course,
+    CourseAssignment,
     Enrollment,
     EnrollmentStatus,
     PublicationStatus,
@@ -21,19 +27,25 @@ from src.db.models.learning_platform import (
     LessonProgress,
     LessonProgressStatus,
 )
+from src.db.models.learning_platform import Badge, CourseBadge, UserBadge
 from src.schemas.user import (
     CourseRead,
+    CourseAssignmentCreate,
+    CourseAssignmentRead,
     EnrollmentRead,
     CourseDetailedRead,
     ModuleDetailedRead,
     ModuleBasicRead,
+    ModuleWithProgressRead,
     LessonDetailedRead,
     LessonBasicRead,
+    LessonWithProgressRead,
     LessonResourceRead,
     LessonProgressRead,
     LessonProgressUpdate,
     LessonProgressUpdateResponse,
 )
+from src.schemas.user import AreaRead, BadgeRead, CourseCardRead, CourseRankingRead, EarnedBadgeNotification, UserBadgeRead
 
 router = APIRouter(tags=["courses"], prefix="/courses")
 
@@ -49,7 +61,7 @@ def get_current_user(
             detail="Not authenticated",
         )
 
-    session = validate_session(session_id)
+    session = validate_session(session_id, db)
     if not session:
         raise HTTPException(
             status_code=401,
@@ -66,25 +78,168 @@ def get_current_user(
     return user
 
 
-@router.get("", response_model=list[CourseRead])
-def get_available_courses(db: Session = Depends(get_db)):
-    """Get all published courses in the platform."""
+def get_optional_current_user(
+    session_id: str | None = Cookie(None),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Get current user if authenticated, otherwise return None."""
+    if not session_id:
+        return None
+    session = validate_session(session_id, db)
+    if not session:
+        return None
+    return db.query(User).filter(User.id == session["user_id"]).first()
+
+
+def require_admin_user(current_user: User, db: Session) -> None:
+    """Allow only super admins or content admins."""
+    admin_role = (
+        db.query(UserRole)
+        .join(Role, Role.id == UserRole.role_id)
+        .filter(
+            UserRole.user_id == current_user.id,
+            Role.name.in_([RoleName.SUPER_ADMIN, RoleName.CONTENT_ADMIN]),
+        )
+        .first()
+    )
+    if not admin_role:
+        raise HTTPException(
+            status_code=403,
+            detail="Only admins can assign courses",
+        )
+
+
+def get_enrollment_completion_seconds(enrollment: Enrollment) -> float:
+    """Return how long a completed enrollment took in seconds."""
+    started_at = enrollment.started_at or enrollment.created_at
+    completed_at = enrollment.completed_at
+    if not started_at or not completed_at:
+        return float("inf")
+
+    return max((completed_at - started_at).total_seconds(), 0.0)
+
+
+def build_course_assignment_read(assignment: CourseAssignment) -> CourseAssignmentRead:
+    """Serialize a course assignment with course and assigner details."""
+    assigned_by_name = None
+    if assignment.assigned_by_user:
+        assigned_by_name = (
+            f"{assignment.assigned_by_user.first_name} {assignment.assigned_by_user.last_name}".strip()
+        )
+
+    return CourseAssignmentRead(
+        id=assignment.id,
+        course_id=assignment.course_id,
+        assigned_by_user_id=assignment.assigned_by_user_id,
+        assigned_to_user_id=assignment.assigned_to_user_id,
+        due_date=assignment.due_date.isoformat(),
+        created_at=assignment.created_at.isoformat(),
+        assigned_by_name=assigned_by_name,
+        course=CourseRead(
+            id=assignment.course.id,
+            title=assignment.course.title,
+            description=assignment.course.description,
+            status=assignment.course.status.value,
+            estimated_minutes=assignment.course.estimated_minutes,
+            cover_url=assignment.course.cover_url,
+        ) if assignment.course else None,
+    )
+
+
+@router.get("", response_model=list[CourseCardRead])
+def get_available_courses(
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_optional_current_user),
+    limit: int = Query(default=10, ge=1, le=50, description="Maximum number of courses to return"),
+    skip: int = Query(default=0, ge=0, description="Number of courses to skip for pagination"),
+):
+    """
+    Get all published courses with pagination.
+
+    - **limit**: Maximum number of courses to return (default: 10, max: 50)
+    - **skip**: Number of courses to skip for pagination (default: 0)
+
+    Returns courses ordered by creation date (most recent first).
+    If authenticated, includes enrollment status and progress.
+    """
     courses = (
         db.query(Course)
-        .filter(Course.status == "published")
+        .options(joinedload(Course.area), joinedload(Course.created_by_user))
+        .filter(Course.status == PublicationStatus.PUBLISHED)
+        .order_by(Course.created_at.desc())
+        .offset(skip)
+        .limit(limit)
         .all()
     )
-    return [
-        CourseRead(
-            id=course.id,
-            title=course.title,
-            description=course.description,
-            status=course.status.value,
-            estimated_minutes=course.estimated_minutes,
-            cover_url=course.cover_url,
+
+    result = []
+    for course in courses:
+        modules_count = (
+            db.query(func.count(CourseModule.id))
+            .filter(CourseModule.course_id == course.id)
+            .scalar() or 0
         )
-        for course in courses
-    ]
+        lessons_count = (
+            db.query(func.count(Lesson.id))
+            .join(CourseModule, Lesson.module_id == CourseModule.id)
+            .filter(CourseModule.course_id == course.id)
+            .scalar() or 0
+        )
+        total_enrolled = (
+            db.query(func.count(Enrollment.id))
+            .filter(Enrollment.course_id == course.id)
+            .scalar() or 0
+        )
+        total_completed = (
+            db.query(func.count(Enrollment.id))
+            .filter(
+                Enrollment.course_id == course.id,
+                Enrollment.status == EnrollmentStatus.completed,
+            )
+            .scalar() or 0
+        )
+
+        enrollment = None
+        is_enrolled = False
+        if current_user:
+            enrollment = (
+                db.query(Enrollment)
+                .filter(
+                    Enrollment.course_id == course.id,
+                    Enrollment.user_id == current_user.id,
+                )
+                .first()
+            )
+            is_enrolled = enrollment is not None
+
+        creator = course.created_by_user
+        created_by_name = f"{creator.first_name} {creator.last_name}".strip() if creator else "Unknown"
+
+        result.append(
+            CourseCardRead(
+                id=course.id,
+                title=course.title,
+                description=course.description,
+                status=course.status.value,
+                estimated_minutes=course.estimated_minutes,
+                cover_url=course.cover_url,
+                area=AreaRead(id=course.area.id, name=course.area.name) if course.area else None,
+                created_by_name=created_by_name,
+                modules_count=modules_count,
+                lessons_count=lessons_count,
+                total_enrolled=total_enrolled,
+                total_completed=total_completed,
+                is_enrolled=is_enrolled,
+                enrollment=EnrollmentRead(
+                    id=enrollment.id,
+                    course_id=enrollment.course_id,
+                    status=enrollment.status.value,
+                    progress_percent=float(enrollment.progress_percent),
+                ) if enrollment else None,
+            )
+        )
+
+    return result
 
 
 @router.get("/user/pending", response_model=list[EnrollmentRead])
@@ -125,6 +280,67 @@ def get_user_pending_courses(
     ]
 
 
+@router.get("/user/assigned", response_model=list[CourseAssignmentRead])
+def get_user_assigned_courses(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get courses assigned to the current user without creating enrollments."""
+    assignments = (
+        db.query(CourseAssignment)
+        .options(
+            joinedload(CourseAssignment.course),
+            joinedload(CourseAssignment.assigned_by_user),
+        )
+        .filter(CourseAssignment.assigned_to_user_id == current_user.id)
+        .order_by(CourseAssignment.due_date.asc(), CourseAssignment.created_at.desc())
+        .all()
+    )
+
+    return [build_course_assignment_read(assignment) for assignment in assignments]
+
+
+@router.get("/user/assigned/pending", response_model=list[CourseAssignmentRead])
+def get_user_pending_assigned_courses(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get assigned courses for the current user that are not completed."""
+    completed_course_ids = {
+        course_id
+        for (course_id,) in (
+            db.query(Enrollment.course_id)
+            .filter(
+                Enrollment.user_id == current_user.id,
+                Enrollment.status == EnrollmentStatus.completed,
+            )
+            .all()
+        )
+    }
+
+    assignments_query = (
+        db.query(CourseAssignment)
+        .options(
+            joinedload(CourseAssignment.course),
+            joinedload(CourseAssignment.assigned_by_user),
+        )
+        .filter(CourseAssignment.assigned_to_user_id == current_user.id)
+    )
+
+    if completed_course_ids:
+        assignments_query = assignments_query.filter(
+            CourseAssignment.course_id.notin_(completed_course_ids)
+        )
+
+    assignments = (
+        assignments_query
+        .order_by(CourseAssignment.due_date.asc(), CourseAssignment.created_at.desc())
+        .all()
+    )
+
+    return [build_course_assignment_read(assignment) for assignment in assignments]
+
+
 @router.get("/user/recommended", response_model=list[CourseRead])
 def get_recommended_courses(
     current_user: User = Depends(get_current_user),
@@ -132,25 +348,38 @@ def get_recommended_courses(
 ):
     """
     Get recommended courses for the current user.
-    Returns all published courses where the user is NOT enrolled.
+    Prioritize published courses from the same area that the user has not taken yet.
+    If there are no same-area matches, return published courses from any area that
+    the user has not taken yet.
     """
-    # Get all course IDs where user has an enrollment (any status)
+    # Get all course IDs where the user already has an enrollment (any status)
     enrolled_course_ids = (
         db.query(Enrollment.course_id)
         .filter(Enrollment.user_id == current_user.id)
         .all()
     )
     enrolled_ids = [course_id for (course_id,) in enrolled_course_ids]
-    
-    # Get all published courses NOT in the enrolled list
-    recommended_courses = (
+
+    base_query = (
         db.query(Course)
         .filter(
             Course.status == PublicationStatus.PUBLISHED,
             Course.id.notin_(enrolled_ids) if enrolled_ids else True,
         )
-        .all()
     )
+
+    same_area_courses = []
+    if current_user.area_id:
+        same_area_courses = (
+            base_query
+            .filter(Course.area_id == current_user.area_id)
+            .order_by(Course.created_at.desc())
+            .all()
+        )
+
+    recommended_courses = same_area_courses
+    if not recommended_courses:
+        recommended_courses = base_query.order_by(Course.created_at.desc()).all()
     
     return [
         CourseRead(
@@ -163,6 +392,282 @@ def get_recommended_courses(
         )
         for course in recommended_courses
     ]
+
+
+@router.get("/user/badges", response_model=list[UserBadgeRead])
+def get_user_badges(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get all badges earned by the current user, ordered by most recently awarded."""
+    user_badges = (
+        db.query(UserBadge)
+        .options(joinedload(UserBadge.badge))
+        .filter(UserBadge.user_id == current_user.id)
+        .order_by(UserBadge.awarded_at.desc())
+        .all()
+    )
+    return [
+        UserBadgeRead(
+            id=ub.id,
+            badge=BadgeRead(
+                id=ub.badge.id,
+                name=ub.badge.name,
+                description=ub.badge.description,
+                icon_url=ub.badge.icon_url,
+                main_color=ub.badge.main_color,
+                secondary_color=ub.badge.secondary_color,
+            ),
+            awarded_at=ub.awarded_at.isoformat(),
+        )
+        for ub in user_badges
+    ]
+
+
+@router.get("/ranking", response_model=list[CourseRankingRead])
+def get_courses_ranking(
+    _current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get the employee ranking ordered by completed courses and completion speed."""
+    completed_enrollments = (
+        db.query(Enrollment)
+        .options(joinedload(Enrollment.user).joinedload(User.area))
+        .filter(Enrollment.status == EnrollmentStatus.completed)
+        .all()
+    )
+
+    ranking_by_user = {}
+    for enrollment in completed_enrollments:
+        if not enrollment.user:
+            continue
+
+        user = enrollment.user
+        ranking_entry = ranking_by_user.setdefault(
+            user.id,
+            {
+                "name": f"{user.first_name} {user.last_name}",
+                "area": user.area.name if user.area else "Sin area",
+                "total_completed_courses": 0,
+                "total_completion_seconds": 0.0,
+            },
+        )
+        ranking_entry["total_completed_courses"] += 1
+        ranking_entry["total_completion_seconds"] += get_enrollment_completion_seconds(enrollment)
+
+    sorted_ranking = sorted(
+        ranking_by_user.values(),
+        key=lambda entry: (
+            -entry["total_completed_courses"],
+            entry["total_completion_seconds"],
+            entry["name"].lower(),
+        ),
+    )
+
+    return [
+        CourseRankingRead(
+            name=entry["name"],
+            total_completed_courses=entry["total_completed_courses"],
+            area=entry["area"],
+        )
+        for entry in sorted_ranking
+    ]
+
+
+@router.post("/assignments", response_model=CourseAssignmentRead, status_code=201)
+def assign_course_to_user(
+    assignment_data: CourseAssignmentCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Assign a course to a learner without enrolling them."""
+    require_admin_user(current_user, db)
+
+    course = db.query(Course).filter(Course.id == assignment_data.course_id).first()
+    if not course:
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found",
+        )
+
+    assigned_user = (
+        db.query(User)
+        .filter(User.id == assignment_data.assigned_to_user_id)
+        .first()
+    )
+    if not assigned_user:
+        raise HTTPException(
+            status_code=404,
+            detail="Assigned user not found",
+        )
+
+    learner_role = (
+        db.query(UserRole)
+        .join(Role, Role.id == UserRole.role_id)
+        .filter(
+            UserRole.user_id == assigned_user.id,
+            Role.name == RoleName.LEARNER,
+        )
+        .first()
+    )
+    if not learner_role:
+        raise HTTPException(
+            status_code=400,
+            detail="Assigned user must have learner role",
+        )
+
+    existing_assignment = (
+        db.query(CourseAssignment)
+        .filter(
+            CourseAssignment.course_id == assignment_data.course_id,
+            CourseAssignment.assigned_to_user_id == assignment_data.assigned_to_user_id,
+        )
+        .first()
+    )
+    if existing_assignment:
+        raise HTTPException(
+            status_code=409,
+            detail="This course is already assigned to this user",
+        )
+
+    existing_enrollment = (
+        db.query(Enrollment)
+        .filter(
+            Enrollment.course_id == assignment_data.course_id,
+            Enrollment.user_id == assignment_data.assigned_to_user_id,
+        )
+        .first()
+    )
+    if existing_enrollment:
+        raise HTTPException(
+            status_code=409,
+            detail="User is already enrolled in this course",
+        )
+
+    assignment = CourseAssignment(
+        id=str(uuid.uuid4()),
+        course_id=assignment_data.course_id,
+        assigned_by_user_id=current_user.id,
+        assigned_to_user_id=assignment_data.assigned_to_user_id,
+        due_date=assignment_data.due_date,
+    )
+    db.add(assignment)
+    db.commit()
+    db.refresh(assignment)
+
+    return CourseAssignmentRead(
+        id=assignment.id,
+        course_id=assignment.course_id,
+        assigned_by_user_id=assignment.assigned_by_user_id,
+        assigned_to_user_id=assignment.assigned_to_user_id,
+        due_date=assignment.due_date.isoformat(),
+        created_at=assignment.created_at.isoformat(),
+        assigned_by_name=f"{current_user.first_name} {current_user.last_name}".strip(),
+        course=CourseRead(
+            id=course.id,
+            title=course.title,
+            description=course.description,
+            status=course.status.value,
+            estimated_minutes=course.estimated_minutes,
+            cover_url=course.cover_url,
+        ),
+    )
+
+
+@router.get("/{course_id}", response_model=CourseCardRead)
+def get_course_card(
+    course_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get course summary for card display.
+
+    Returns all the information needed to render a course card:
+    title, description, area, creator name, module/lesson counts,
+    enrollment stats (total enrolled and completed), and whether
+    the current user is already enrolled.
+
+    Does NOT require the user to be enrolled.
+    """
+    course = (
+        db.query(Course)
+        .options(
+            joinedload(Course.area),
+            joinedload(Course.created_by_user),
+        )
+        .filter(Course.id == course_id)
+        .first()
+    )
+
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    # Counts via efficient scalar queries
+    modules_count: int = (
+        db.query(func.count(CourseModule.id))
+        .filter(CourseModule.course_id == course_id)
+        .scalar()
+    ) or 0
+
+    lessons_count: int = (
+        db.query(func.count(Lesson.id))
+        .join(CourseModule, Lesson.module_id == CourseModule.id)
+        .filter(CourseModule.course_id == course_id)
+        .scalar()
+    ) or 0
+
+    total_enrolled: int = (
+        db.query(func.count(Enrollment.id))
+        .filter(Enrollment.course_id == course_id)
+        .scalar()
+    ) or 0
+
+    total_completed: int = (
+        db.query(func.count(Enrollment.id))
+        .filter(
+            Enrollment.course_id == course_id,
+            Enrollment.status == EnrollmentStatus.completed,
+        )
+        .scalar()
+    ) or 0
+
+    # Current user enrollment (optional)
+    enrollment = (
+        db.query(Enrollment)
+        .filter(
+            Enrollment.user_id == current_user.id,
+            Enrollment.course_id == course_id,
+        )
+        .first()
+    )
+
+    return CourseCardRead(
+        id=course.id,
+        title=course.title,
+        description=course.description,
+        status=course.status.value,
+        estimated_minutes=course.estimated_minutes,
+        cover_url=course.cover_url,
+        area=AreaRead(
+            id=course.area.id,
+            name=course.area.name,
+        ) if course.area else None,
+        created_by_name=(
+            f"{course.created_by_user.first_name} {course.created_by_user.last_name}"
+        ),
+        modules_count=modules_count,
+        lessons_count=lessons_count,
+        total_enrolled=total_enrolled,
+        total_completed=total_completed,
+        is_enrolled=enrollment is not None,
+        enrollment=EnrollmentRead(
+            id=enrollment.id,
+            course_id=enrollment.course_id,
+            status=enrollment.status.value,
+            progress_percent=float(enrollment.progress_percent),
+        ) if enrollment else None,
+    )
 
 
 @router.post("/{course_id}/enroll", response_model=EnrollmentRead, status_code=201)
@@ -250,18 +755,15 @@ def get_course_detailed(
     course_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    focus_module_id: str | None = None,
-    focus_lesson_id: str | None = None,
 ):
     """
-    Get detailed course information with all modules and lessons.
+    Get course with all modules and lessons including progress status.
     
-    By default, returns detailed information (including resources and progress) for the first module and first lesson.
-    Use focus_module_id and focus_lesson_id query parameters to load detailed info for a specific lesson.
+    Returns all modules and all lessons with their progress percentage and status,
+    but WITHOUT resources. To get full lesson details with resources,
+    use GET /courses/{course_id}/lessons/{lesson_id}
     
     - **course_id**: UUID of the course
-    - **focus_module_id** (optional): UUID of the module to focus on
-    - **focus_lesson_id** (optional): UUID of the lesson to focus on (requires focus_module_id)
     
     Requires the user to be enrolled in the course.
     """
@@ -307,123 +809,45 @@ def get_course_detailed(
     for lp in lesson_progresses:
         lesson_progress_map[lp.lesson_id] = lp
     
-    # Prepare response
-    first_module_data = None
-    other_modules_data = []
-    
-    # Sort modules by sort_order
+    # Build modules with lessons including progress
+    modules_data = []
     sorted_modules = sorted(course.modules, key=lambda m: m.sort_order)
     
-    # Determine which module and lesson to focus on
-    focus_module = None
-    focus_lesson = None
-    
-    if focus_module_id:
-        # Find the specified module
-        focus_module = next((m for m in sorted_modules if m.id == focus_module_id), None)
-        if not focus_module:
-            raise HTTPException(
-                status_code=404,
-                detail="Focus module not found in this course",
-            )
-        
-        if focus_lesson_id:
-            # Find the specified lesson in the focus module
-            focus_lesson = next((l for l in focus_module.lessons if l.id == focus_lesson_id), None)
-            if not focus_lesson:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Focus lesson not found in the specified module",
-                )
-        else:
-            # Default to first lesson of the focus module
-            sorted_focus_lessons = sorted(focus_module.lessons, key=lambda l: l.sort_order)
-            focus_lesson = sorted_focus_lessons[0] if sorted_focus_lessons else None
-    else:
-        # Default to first module and first lesson
-        if sorted_modules:
-            focus_module = sorted_modules[0]
-            sorted_focus_lessons = sorted(focus_module.lessons, key=lambda l: l.sort_order)
-            focus_lesson = sorted_focus_lessons[0] if sorted_focus_lessons else None
-    
-    # Build modules structure
     for module in sorted_modules:
-        # Sort lessons by sort_order
         sorted_lessons = sorted(module.lessons, key=lambda l: l.sort_order)
         
-        if focus_module and module.id == focus_module.id:
-            # This is the focus module: detailed with all lessons including progress
-            detailed_lessons = []
+        lessons_with_progress = []
+        for lesson in sorted_lessons:
+            # Get progress for this lesson
+            lesson_progress = lesson_progress_map.get(lesson.id)
             
-            for lesson in sorted_lessons:
-                # Get progress for this lesson
-                lesson_progress = lesson_progress_map.get(lesson.id)
-                progress_data = None
-                if lesson_progress:
-                    progress_data = LessonProgressRead(
-                        lesson_id=lesson.id,
-                        status=lesson_progress.status.value,
-                        progress_percent=float(lesson_progress.progress_percent),
-                    )
-                
-                # Load resources only for the focus lesson
-                resources = []
-                if focus_lesson and lesson.id == focus_lesson.id:
-                    resources_list = (
-                        db.query(LessonResource)
-                        .filter(LessonResource.lesson_id == lesson.id)
-                        .all()
-                    )
-                    resources = [
-                        LessonResourceRead(
-                            id=r.id,
-                            resource_type=r.resource_type.value,
-                            title=r.title,
-                            external_url=r.external_url,
-                            thumbnail_url=r.thumbnail_url,
-                            duration_seconds=r.duration_seconds,
-                        )
-                        for r in resources_list
-                    ]
-                
-                detailed_lessons.append(
-                    LessonDetailedRead(
-                        id=lesson.id,
-                        title=lesson.title,
-                        description=lesson.description,
-                        sort_order=lesson.sort_order,
-                        estimated_minutes=lesson.estimated_minutes,
-                        resources=resources,
-                        progress=progress_data,
-                    )
-                )
+            if lesson_progress:
+                status = lesson_progress.status.value
+                progress_percent = float(lesson_progress.progress_percent)
+            else:
+                # Default values for lessons without progress
+                status = "not_started"
+                progress_percent = 0.0
             
-            first_module_data = ModuleDetailedRead(
-                id=module.id,
-                title=module.title,
-                sort_order=module.sort_order,
-                lessons=detailed_lessons,
-            )
-        else:
-            # Other modules: basic info only
-            basic_lessons = [
-                LessonBasicRead(
+            lessons_with_progress.append(
+                LessonWithProgressRead(
                     id=lesson.id,
                     title=lesson.title,
                     sort_order=lesson.sort_order,
                     estimated_minutes=lesson.estimated_minutes,
-                )
-                for lesson in sorted_lessons
-            ]
-            
-            other_modules_data.append(
-                ModuleBasicRead(
-                    id=module.id,
-                    title=module.title,
-                    sort_order=module.sort_order,
-                    lessons=basic_lessons,
+                    status=status,
+                    progress_percent=progress_percent,
                 )
             )
+        
+        modules_data.append(
+            ModuleWithProgressRead(
+                id=module.id,
+                title=module.title,
+                sort_order=module.sort_order,
+                lessons=lessons_with_progress,
+            )
+        )
     
     return CourseDetailedRead(
         id=course.id,
@@ -438,8 +862,111 @@ def get_course_detailed(
             status=enrollment.status.value,
             progress_percent=float(enrollment.progress_percent),
         ),
-        first_module=first_module_data,
-        other_modules=other_modules_data,
+        modules=modules_data,
+    )
+
+
+@router.get("/{course_id}/lessons/{lesson_id}", response_model=LessonDetailedRead)
+def get_lesson_detailed(
+    course_id: str,
+    lesson_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get detailed information for a specific lesson including resources and progress.
+    
+    - **course_id**: UUID of the course
+    - **lesson_id**: UUID of the lesson
+    
+    Returns full lesson details with:
+    - Title, description, estimated_minutes
+    - All resources (videos, PDFs, slides, etc.)
+    - User's progress (status, progress_percent)
+    
+    Requires the user to be enrolled in the course.
+    """
+    # Check if user is enrolled
+    enrollment = (
+        db.query(Enrollment)
+        .filter(
+            Enrollment.user_id == current_user.id,
+            Enrollment.course_id == course_id,
+        )
+        .first()
+    )
+    
+    if not enrollment:
+        raise HTTPException(
+            status_code=403,
+            detail="User is not enrolled in this course",
+        )
+    
+    # Get lesson with resources
+    lesson = (
+        db.query(Lesson)
+        .join(CourseModule)
+        .filter(
+            Lesson.id == lesson_id,
+            CourseModule.course_id == course_id,
+        )
+        .first()
+    )
+    
+    if not lesson:
+        raise HTTPException(
+            status_code=404,
+            detail="Lesson not found in this course",
+        )
+    
+    # Get lesson resources
+    resources_list = (
+        db.query(LessonResource)
+        .filter(LessonResource.lesson_id == lesson_id)
+        .all()
+    )
+    
+    resources = [
+        LessonResourceRead(
+            id=r.id,
+            resource_type=r.resource_type.value,
+            title=r.title,
+            external_url=r.external_url,
+            thumbnail_url=r.thumbnail_url,
+            duration_seconds=r.duration_seconds,
+        )
+        for r in resources_list
+    ]
+    
+    # Get lesson progress
+    lesson_progress = (
+        db.query(LessonProgress)
+        .filter(
+            LessonProgress.enrollment_id == enrollment.id,
+            LessonProgress.lesson_id == lesson_id,
+        )
+        .first()
+    )
+    
+    progress_data = None
+    if lesson_progress:
+        progress_data = LessonProgressRead(
+            lesson_id=lesson.id,
+            status=lesson_progress.status.value,
+            progress_percent=float(lesson_progress.progress_percent),
+            time_spent_seconds=lesson_progress.time_spent_seconds,
+            completed_at=lesson_progress.completed_at.isoformat() if lesson_progress.completed_at else None,
+            last_activity_at=lesson_progress.last_activity_at.isoformat() if lesson_progress.last_activity_at else None,
+        )
+    
+    return LessonDetailedRead(
+        id=lesson.id,
+        title=lesson.title,
+        description=lesson.description,
+        sort_order=lesson.sort_order,
+        estimated_minutes=lesson.estimated_minutes,
+        resources=resources,
+        progress=progress_data,
     )
 
 
@@ -518,6 +1045,13 @@ def update_lesson_progress(
         lesson_progress.status = status_enum
         lesson_progress.progress_percent = Decimal(str(progress_data.progress_percent))
         lesson_progress.time_spent_seconds = progress_data.time_spent_seconds
+        lesson_progress.last_activity_at = datetime.utcnow()
+        
+        # Mark as completed if progress is 100% or status is completed
+        if progress_data.progress_percent >= 100 or status_enum == LessonProgressStatus.completed:
+            lesson_progress.status = LessonProgressStatus.completed
+            if not lesson_progress.completed_at:
+                lesson_progress.completed_at = datetime.utcnow()
     else:
         # Create new progress entry
         lesson_progress = LessonProgress(
@@ -527,11 +1061,21 @@ def update_lesson_progress(
             status=status_enum,
             progress_percent=Decimal(str(progress_data.progress_percent)),
             time_spent_seconds=progress_data.time_spent_seconds,
+            last_activity_at=datetime.utcnow(),
         )
+        
+        # Mark as completed if progress is 100% or status is completed
+        if progress_data.progress_percent >= 100 or status_enum == LessonProgressStatus.completed:
+            lesson_progress.status = LessonProgressStatus.completed
+            lesson_progress.completed_at = datetime.utcnow()
+        
         db.add(lesson_progress)
     
+    # Flush to make the new lesson_progress visible in subsequent queries
+    db.flush()
+    
     # Update enrollment last_activity_at
-    enrollment.last_activity_at = datetime.now()
+    enrollment.last_activity_at = datetime.utcnow()
     
     # Calculate overall course progress based on ALL lessons
     # Get all lessons in the course
@@ -576,8 +1120,49 @@ def update_lesson_progress(
         # Mark course as completed only if ALL lessons are 100% completed
         if completed_count == total_lessons:
             enrollment.status = EnrollmentStatus.completed
-            enrollment.completed_at = datetime.now()
+            if not enrollment.completed_at:
+                enrollment.completed_at = datetime.utcnow()
     
+    # Check for newly earned badges based on updated enrollment progress
+    new_progress = float(enrollment.progress_percent)
+    course_badges = (
+        db.query(CourseBadge)
+        .options(joinedload(CourseBadge.badge))
+        .filter(
+            CourseBadge.course_id == course_id,
+            CourseBadge.progress_percentage <= new_progress,
+        )
+        .all()
+    )
+
+    earned_badges = []
+    for cb in course_badges:
+        existing = (
+            db.query(UserBadge)
+            .filter(
+                UserBadge.user_id == current_user.id,
+                UserBadge.badge_id == cb.badge_id,
+            )
+            .first()
+        )
+        if not existing:
+            db.add(UserBadge(
+                id=str(uuid.uuid4()),
+                user_id=current_user.id,
+                badge_id=cb.badge_id,
+            ))
+            earned_badges.append(EarnedBadgeNotification(
+                badge=BadgeRead(
+                    id=cb.badge.id,
+                    name=cb.badge.name,
+                    description=cb.badge.description,
+                    icon_url=cb.badge.icon_url,
+                    main_color=cb.badge.main_color,
+                    secondary_color=cb.badge.secondary_color,
+                ),
+                awarded_at=datetime.utcnow().isoformat(),
+            ))
+
     db.commit()
     db.refresh(lesson_progress)
     db.refresh(enrollment)
@@ -588,4 +1173,5 @@ def update_lesson_progress(
         progress_percent=float(lesson_progress.progress_percent),
         time_spent_seconds=lesson_progress.time_spent_seconds,
         enrollment_progress_percent=float(enrollment.progress_percent),
+        earned_badges=earned_badges,
     )

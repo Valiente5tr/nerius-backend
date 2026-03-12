@@ -108,6 +108,15 @@ class User(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    course_assignments_received: Mapped[list[CourseAssignment]] = relationship(
+        back_populates="assigned_to_user",
+        foreign_keys="CourseAssignment.assigned_to_user_id",
+        cascade="all, delete-orphan",
+    )
+    course_assignments_sent: Mapped[list[CourseAssignment]] = relationship(
+        back_populates="assigned_by_user",
+        foreign_keys="CourseAssignment.assigned_by_user_id",
+    )
     badge_awards: Mapped[list[UserBadge]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
@@ -123,6 +132,42 @@ class User(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         cascade="all, delete-orphan",
     )
     analytics_events: Mapped[list[AnalyticsEvent]] = relationship(back_populates="user")
+    sessions: Mapped[list[Session]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class Session(Base):
+    """User session for authentication."""
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # session_id token
+    user_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("users.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+    expires_at: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
+    last_activity_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+    user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+
+    user: Mapped[User] = relationship(back_populates="sessions")
+
+    __table_args__ = (
+        Index("idx_sessions_user_id", "user_id"),
+        Index("idx_sessions_expires_at", "expires_at"),
+    )
 
 
 class Role(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
@@ -209,6 +254,14 @@ class Course(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
         order_by="CourseModule.sort_order",
     )
     enrollments: Mapped[list[Enrollment]] = relationship(
+        back_populates="course",
+        cascade="all, delete-orphan",
+    )
+    assignments: Mapped[list[CourseAssignment]] = relationship(
+        back_populates="course",
+        cascade="all, delete-orphan",
+    )
+    badge_links: Mapped[list[CourseBadge]] = relationship(
         back_populates="course",
         cascade="all, delete-orphan",
     )
@@ -325,6 +378,46 @@ class Enrollment(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
 
 
+class CourseAssignment(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    __tablename__ = "course_assignments"
+    __table_args__ = (
+        UniqueConstraint(
+            "assigned_to_user_id",
+            "course_id",
+            name="uq_course_assignments_user_course",
+        ),
+        Index("idx_course_assignments_due_date", "due_date"),
+        Index("idx_course_assignments_assigned_by", "assigned_by_user_id"),
+    )
+
+    course_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("courses.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    assigned_by_user_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("users.id", ondelete="SET NULL", onupdate="CASCADE"),
+        nullable=True,
+    )
+    assigned_to_user_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("users.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    due_date: Mapped[datetime] = mapped_column(TIMESTAMP, nullable=False)
+
+    course: Mapped[Course] = relationship(back_populates="assignments")
+    assigned_by_user: Mapped[User | None] = relationship(
+        back_populates="course_assignments_sent",
+        foreign_keys=[assigned_by_user_id],
+    )
+    assigned_to_user: Mapped[User] = relationship(
+        back_populates="course_assignments_received",
+        foreign_keys=[assigned_to_user_id],
+    )
+
+
 class LessonProgress(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     __tablename__ = "lesson_progress"
     __table_args__ = (
@@ -373,11 +466,43 @@ class Badge(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     icon_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    main_color: Mapped[str] = mapped_column(String(20), nullable=False, server_default="#3b82f6")
+    secondary_color: Mapped[str] = mapped_column(String(20), nullable=False, server_default="#1e40af")
 
     user_badges: Mapped[list[UserBadge]] = relationship(
         back_populates="badge",
         cascade="all, delete-orphan",
     )
+    course_badge_links: Mapped[list[CourseBadge]] = relationship(
+        back_populates="badge",
+        cascade="all, delete-orphan",
+    )
+
+
+class CourseBadge(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
+    __tablename__ = "course_badges"
+    __table_args__ = (
+        UniqueConstraint("course_id", "badge_id", name="uq_course_badges_course_badge"),
+    )
+
+    course_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("courses.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    badge_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("badges.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+    )
+    progress_percentage: Mapped[Decimal] = mapped_column(
+        DECIMAL(5, 2),
+        nullable=False,
+        server_default=text("100.00"),
+    )
+
+    course: Mapped[Course] = relationship(back_populates="badge_links")
+    badge: Mapped[Badge] = relationship(back_populates="course_badge_links")
 
 
 class UserBadge(UUIDPrimaryKeyMixin, Base):
@@ -425,6 +550,7 @@ class ForumPost(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(180), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    multimedia_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[PublicationStatus] = mapped_column(
         Enum(PublicationStatus, name="forum_post_status_enum", native_enum=False),
         nullable=False,
