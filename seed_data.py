@@ -28,6 +28,21 @@ from src.db.models.learning_platform import (
     PublicationStatus,
     EnrollmentStatus,
     ResourceType,
+    GemCategory,
+    Gem,
+    GemTag,
+    GemTagLink,
+    GemAreaLink,
+    UserGemCollection,
+    CourseGem,
+    GemVisibility,
+    Quiz,
+    QuizQuestion,
+    QuizQuestionOption,
+    QuestionType,
+    CourseCertification,
+    UserCourseGrant,
+    CourseAccessType,
 )
 from src.core.auth import hash_password
 
@@ -355,10 +370,15 @@ def seed_database():
         c1_m3_l2_res = LessonResource(id=generate_uuid(), lesson_id=c1_m3_l2.id, resource_type=ResourceType.PDF, title="Políticas de privacidad Gemini para Workspace", external_url="https://assets.stevens.edu/mviowpldu823/3iXQ74HU9dPDNmN0C4RFwl/7bd34634a4d8e0dcb22d963fc6746681/Guide_to_Data_Security_and_Protection_in_AI_Tools.pdf", created_at=datetime.utcnow())
         c1_m3_l3 = Lesson(id=generate_uuid(), module_id=c1_mod3.id, title="Ética y uso responsable de IA en la empresa", description="Principios éticos para el uso responsable de Gemini en entornos empresariales.", sort_order=3, estimated_minutes=30, created_at=datetime.utcnow())
         c1_m3_l3_res = LessonResource(id=generate_uuid(), lesson_id=c1_m3_l3.id, resource_type=ResourceType.PDF, title="Guía de ética en IA empresarial", external_url="https://revistas.ibero.mx/ibero/uploads/volumenes/69/pdf/6-etica-en-la-inteligencia-artificial.pdf", created_at=datetime.utcnow())
+        # Módulo 4: Evaluación Final (quiz-only)
+        c1_mod4 = CourseModule(id=generate_uuid(), course_id=course1.id, title="Evaluación Final", sort_order=4, created_at=datetime.utcnow())
+        c1_final = Lesson(id=generate_uuid(), module_id=c1_mod4.id, title="Examen Final: Google Gemini para Empresas", description="Evaluación integral de todos los módulos del curso. Debes obtener 70% para aprobar.", sort_order=1, estimated_minutes=20, created_at=datetime.utcnow())
+
         db.add_all([
             c1_mod1, c1_m1_l1, c1_m1_l1_res, c1_m1_l2, c1_m1_l2_res, c1_m1_l3, c1_m1_l3_res,
             c1_mod2, c1_m2_l1, c1_m2_l1_res, c1_m2_l2, c1_m2_l2_res, c1_m2_l3, c1_m2_l3_res,
             c1_mod3, c1_m3_l1, c1_m3_l1_res, c1_m3_l2, c1_m3_l2_res, c1_m3_l3, c1_m3_l3_res,
+            c1_mod4, c1_final,
         ])
         db.flush()
 
@@ -386,10 +406,15 @@ def seed_database():
         c2_m3_l2_res = LessonResource(id=generate_uuid(), lesson_id=c2_m3_l2.id, resource_type=ResourceType.PDF, title="Plan de mantenimiento de Gemas", external_url="https://example.com/gems-maintenance.pdf", created_at=datetime.utcnow())
         c2_m3_l3 = Lesson(id=generate_uuid(), module_id=c2_mod3.id, title="Métricas de uso y adopción de Gemas", description="Cómo medir el uso, la adopción y el impacto de tus Gemas empresariales para demostrar ROI.", sort_order=3, estimated_minutes=35, created_at=datetime.utcnow())
         c2_m3_l3_res = LessonResource(id=generate_uuid(), lesson_id=c2_m3_l3.id, resource_type=ResourceType.VIDEO, title="Métricas y ROI de Gemas", external_url="https://www.youtube.com/embed/gems_metrics_roi", duration_seconds=1800, created_at=datetime.utcnow())
+        # Módulo 4: Evaluación Final (quiz-only)
+        c2_mod4 = CourseModule(id=generate_uuid(), course_id=course2.id, title="Evaluación Final", sort_order=4, created_at=datetime.utcnow())
+        c2_final = Lesson(id=generate_uuid(), module_id=c2_mod4.id, title="Examen Final: Gemas Personalizadas", description="Evaluación integral de todo lo aprendido sobre creación de Gemas. Debes obtener 70% para aprobar.", sort_order=1, estimated_minutes=25, created_at=datetime.utcnow())
+
         db.add_all([
             c2_mod1, c2_m1_l1, c2_m1_l1_res, c2_m1_l2, c2_m1_l2_res, c2_m1_l3, c2_m1_l3_res,
             c2_mod2, c2_m2_l1, c2_m2_l1_res, c2_m2_l2, c2_m2_l2_res, c2_m2_l3, c2_m2_l3_res,
             c2_mod3, c2_m3_l1, c2_m3_l1_res, c2_m3_l2, c2_m3_l2_res, c2_m3_l3, c2_m3_l3_res,
+            c2_mod4, c2_final,
         ])
         db.flush()
 
@@ -459,11 +484,16 @@ def seed_database():
         c4_m4_l3_res = LessonResource(id=generate_uuid(), lesson_id=c4_m4_l3.id, resource_type=ResourceType.PDF, title="Guía de speaker notes con IA", external_url="https://example.com/speaker-notes-ai.pdf", created_at=datetime.utcnow())
         c4_m4_l4 = Lesson(id=generate_uuid(), module_id=c4_mod4.id, title="Presentaciones ejecutivas de alto impacto", description="Estrategias para crear presentaciones para juntas directivas usando Gemini como asistente creativo.", sort_order=4, estimated_minutes=45, created_at=datetime.utcnow())
         c4_m4_l4_res = LessonResource(id=generate_uuid(), lesson_id=c4_m4_l4.id, resource_type=ResourceType.VIDEO, title="Presentaciones ejecutivas con Gemini", external_url="https://www.youtube.com/embed/gemini_exec_slides", duration_seconds=2200, created_at=datetime.utcnow())
+        # Módulo 5: Evaluación Final (quiz-only)
+        c4_mod5 = CourseModule(id=generate_uuid(), course_id=course4.id, title="Evaluación Final", sort_order=5, created_at=datetime.utcnow())
+        c4_final = Lesson(id=generate_uuid(), module_id=c4_mod5.id, title="Examen Final: Google Workspace + Gemini", description="Evaluación integral de productividad con Google Workspace y Gemini. Debes obtener 70% para aprobar.", sort_order=1, estimated_minutes=25, created_at=datetime.utcnow())
+
         db.add_all([
             c4_mod1, c4_m1_l1, c4_m1_l1_res, c4_m1_l2, c4_m1_l2_res, c4_m1_l3, c4_m1_l3_res, c4_m1_l4, c4_m1_l4_res,
             c4_mod2, c4_m2_l1, c4_m2_l1_res, c4_m2_l2, c4_m2_l2_res, c4_m2_l3, c4_m2_l3_res, c4_m2_l4, c4_m2_l4_res,
             c4_mod3, c4_m3_l1, c4_m3_l1_res, c4_m3_l2, c4_m3_l2_res, c4_m3_l3, c4_m3_l3_res, c4_m3_l4, c4_m3_l4_res,
             c4_mod4, c4_m4_l1, c4_m4_l1_res, c4_m4_l2, c4_m4_l2_res, c4_m4_l3, c4_m4_l3_res, c4_m4_l4, c4_m4_l4_res,
+            c4_mod5, c4_final,
         ])
         db.flush()
 
@@ -1017,6 +1047,654 @@ def seed_database():
 
         # Commit all changes
         db.commit()
+        # ============================================================
+        # Gem Bank seed data
+        # ============================================================
+
+        # Categories
+        cat_productivity = GemCategory(
+            id=generate_uuid(), name="Productividad",
+            description="Gemas para mejorar tu productividad diaria",
+            icon="zap", sort_order=1,
+        )
+        cat_analysis = GemCategory(
+            id=generate_uuid(), name="Análisis de Datos",
+            description="Gemas para analizar y visualizar datos",
+            icon="bar-chart-2", sort_order=2,
+        )
+        cat_writing = GemCategory(
+            id=generate_uuid(), name="Redacción",
+            description="Gemas para escritura y comunicación",
+            icon="pen-tool", sort_order=3,
+        )
+        cat_coding = GemCategory(
+            id=generate_uuid(), name="Programación",
+            description="Gemas para desarrollo y código",
+            icon="code", sort_order=4,
+        )
+        cat_learning = GemCategory(
+            id=generate_uuid(), name="Aprendizaje",
+            description="Gemas para estudiar y aprender",
+            icon="graduation-cap", sort_order=5,
+        )
+        cat_business = GemCategory(
+            id=generate_uuid(), name="Negocios",
+            description="Gemas para estrategia y gestión empresarial",
+            icon="briefcase", sort_order=6,
+        )
+        db.add_all([cat_productivity, cat_analysis, cat_writing, cat_coding, cat_learning, cat_business])
+        db.flush()
+
+        # Tags
+        tag_names = [
+            "gemini", "google workspace", "productividad", "datos",
+            "excel", "escritura", "código", "python", "ventas",
+            "marketing", "rrhh", "finanzas", "reuniones", "presentaciones",
+            "email", "reportes", "automatización", "ia",
+        ]
+        tags = {}
+        for name in tag_names:
+            t = GemTag(id=generate_uuid(), name=name)
+            tags[name] = t
+        db.add_all(tags.values())
+        db.flush()
+
+        # Helper to create gems
+        def create_gem(title, desc, instructions, category, area, creator,
+                       starters, tag_list, featured=False, extra_areas=None, gemini_url=None):
+            g = Gem(
+                id=generate_uuid(),
+                category_id=category.id,
+                area_id=area.id if area else None,
+                created_by_user_id=creator.id,
+                title=title,
+                description=desc,
+                instructions=instructions,
+                gemini_url=gemini_url,
+                conversation_starters=starters,
+                visibility=GemVisibility.PUBLIC,
+                is_featured=featured,
+                status=PublicationStatus.PUBLISHED,
+                usage_count=0,
+            )
+            db.add(g)
+            db.flush()
+            for tname in tag_list:
+                if tname in tags:
+                    db.add(GemTagLink(gem_id=g.id, tag_id=tags[tname].id))
+            if extra_areas:
+                for a in extra_areas:
+                    db.add(GemAreaLink(gem_id=g.id, area_id=a.id))
+            return g
+
+        gem1 = create_gem(
+            "Asistente de Correos Profesionales",
+            "Redacta correos corporativos claros y efectivos en español",
+            "Eres un experto en comunicación corporativa. Ayudas a redactar correos electrónicos profesionales, claros y concisos. Adaptas el tono según el contexto: formal para directivos, cordial para colegas, amable para clientes. Siempre sugieres un asunto efectivo y estructura el correo en saludo, cuerpo y cierre.",
+            cat_writing, area_business, user_admin,
+            ["Redacta un correo para solicitar una reunión", "Ayúdame a responder este correo difícil", "Escribe un correo de seguimiento"],
+            ["escritura", "email", "productividad"],
+            featured=True, extra_areas=[area_tech],
+            gemini_url="https://gemini.google.com/gem/correos-profesionales",
+        )
+
+        gem2 = create_gem(
+            "Analista de Datos con Python",
+            "Analiza datasets y genera visualizaciones con Python y pandas",
+            "Eres un analista de datos experto en Python, pandas, matplotlib y seaborn. Ayudas a limpiar, transformar y visualizar datos. Explicas cada paso del análisis y sugieres los gráficos más apropiados para cada tipo de dato. Siempre validas la calidad de los datos antes de analizarlos.",
+            cat_analysis, area_tech, user_super_admin,
+            ["Analiza este CSV y dame un resumen", "Crea un gráfico de tendencias", "Limpia estos datos duplicados"],
+            ["datos", "python", "ia"],
+            featured=True,
+            gemini_url="https://gemini.google.com/gem/analista-datos-python",
+        )
+
+        gem3 = create_gem(
+            "Coach de Presentaciones",
+            "Diseña y mejora presentaciones ejecutivas impactantes",
+            "Eres un coach de presentaciones ejecutivas. Ayudas a estructurar presentaciones con storytelling, datos clave y visuales claros. Sugieres la cantidad ideal de slides, el orden de los temas y cómo hacer transiciones efectivas. Tu objetivo es que cada presentación sea memorable y orientada a resultados.",
+            cat_business, area_business, user_admin,
+            ["Ayúdame a estructurar mi presentación trimestral", "¿Cómo puedo hacer más impactante esta slide?", "Resume estos datos para una presentación"],
+            ["presentaciones", "productividad"],
+            featured=True,
+            gemini_url="https://gemini.google.com/gem/coach-presentaciones",
+        )
+
+        gem4 = create_gem(
+            "Asistente de Google Sheets",
+            "Crea fórmulas, macros y automatizaciones en Google Sheets",
+            "Eres un experto en Google Sheets. Dominas fórmulas avanzadas (QUERY, ARRAYFORMULA, IMPORTRANGE), tablas dinámicas, formato condicional y Apps Script. Explicas cada fórmula paso a paso y ofreces alternativas cuando hay varias soluciones posibles.",
+            cat_productivity, area_tech, user_super_admin,
+            ["Necesito una fórmula para consolidar datos", "Crea un dashboard automático", "Automatiza este reporte semanal"],
+            ["google workspace", "productividad", "automatización", "datos"],
+            featured=True, extra_areas=[area_business],
+            gemini_url="https://gemini.google.com/gem/google-sheets-experto",
+        )
+
+        gem5 = create_gem(
+            "Tutor de Gemini para Principiantes",
+            "Aprende a usar Google Gemini desde cero paso a paso",
+            "Eres un tutor paciente y claro que enseña a usar Google Gemini desde nivel básico. Explicas conceptos de IA generativa de forma sencilla, con ejemplos prácticos del día a día laboral. Guías al usuario con ejercicios progresivos y celebras sus avances.",
+            cat_learning, None, user_admin,
+            ["¿Qué es Google Gemini y para qué sirve?", "Enséñame a hacer mi primer prompt", "¿Cómo creo una gema personalizada?"],
+            ["gemini", "ia", "productividad"],
+            featured=True, extra_areas=[area_tech, area_business],
+            gemini_url="https://gemini.google.com/gem/tutor-gemini-principiantes",
+        )
+
+        gem6 = create_gem(
+            "Generador de Reportes Ejecutivos",
+            "Transforma datos crudos en reportes ejecutivos claros",
+            "Eres un experto en reportes ejecutivos. Transformas datos crudos y métricas en informes claros, con resumen ejecutivo, hallazgos clave, gráficos sugeridos y recomendaciones accionables. Usas lenguaje de negocios y priorizas la información más relevante para la toma de decisiones.",
+            cat_business, area_business, user_admin,
+            ["Convierte estos datos en un reporte", "Escribe un resumen ejecutivo", "¿Qué KPIs debería incluir?"],
+            ["reportes", "datos", "productividad"],
+        )
+
+        gem7 = create_gem(
+            "Asistente de Código Python",
+            "Escribe, depura y optimiza código Python",
+            "Eres un desarrollador Python senior. Ayudas a escribir código limpio, eficiente y bien documentado. Sigues PEP 8, sugieres patrones de diseño apropiados y explicas la complejidad algorítmica. Cuando depuras, analizas el error paso a paso antes de proponer la solución.",
+            cat_coding, area_tech, user_super_admin,
+            ["Revisa este código y sugiere mejoras", "¿Cómo implemento esto en Python?", "Ayúdame a depurar este error"],
+            ["código", "python"],
+        )
+
+        gem8 = create_gem(
+            "Planificador de Reuniones Efectivas",
+            "Estructura reuniones productivas con agenda y seguimiento",
+            "Eres un facilitador de reuniones experto. Ayudas a crear agendas efectivas, definir objetivos claros, asignar tiempos y roles. Después de la reunión, generas minutas estructuradas con acuerdos, responsables y fechas. Tu meta es que cada reunión tenga un propósito claro y resultados medibles.",
+            cat_productivity, area_business, user_admin,
+            ["Crea una agenda para mi reunión semanal", "Genera la minuta de esta reunión", "¿Cómo hago reuniones más cortas?"],
+            ["reuniones", "productividad", "google workspace"],
+            extra_areas=[area_tech],
+        )
+
+        gem9 = create_gem(
+            "Estratega de Marketing Digital",
+            "Diseña estrategias de marketing y campañas digitales",
+            "Eres un estratega de marketing digital con experiencia en SEO, SEM, redes sociales y email marketing. Ayudas a diseñar campañas, analizar métricas de rendimiento y optimizar el ROI. Conoces las mejores prácticas de cada canal y adaptas las estrategias al presupuesto disponible.",
+            cat_business, area_business, user_admin,
+            ["Diseña una campaña para este producto", "Analiza estas métricas de marketing", "¿Cómo mejoro mi SEO?"],
+            ["marketing", "datos", "ia"],
+        )
+
+        gem10 = create_gem(
+            "Asistente de Onboarding RRHH",
+            "Guía procesos de onboarding y gestión de talento",
+            "Eres un especialista en recursos humanos y onboarding. Ayudas a diseñar procesos de bienvenida para nuevos empleados, crear checklists, planificar la primera semana y generar materiales de inducción. Conoces las mejores prácticas para retención de talento y cultura organizacional.",
+            cat_business, area_business, user_admin,
+            ["Crea un plan de onboarding de 30 días", "¿Qué documentos necesito para un nuevo ingreso?", "Diseña una encuesta de clima laboral"],
+            ["rrhh", "productividad"],
+        )
+
+        db.flush()
+
+        # Associate some gems with courses (use first course available)
+        # Associate gems with courses
+        db.add(CourseGem(id=generate_uuid(), course_id=course1.id, gem_id=gem5.id, sort_order=0))
+        db.add(CourseGem(id=generate_uuid(), course_id=course1.id, gem_id=gem4.id, sort_order=1))
+        db.add(CourseGem(id=generate_uuid(), course_id=course2.id, gem_id=gem1.id, sort_order=0))
+        db.add(CourseGem(id=generate_uuid(), course_id=course2.id, gem_id=gem7.id, sort_order=1))
+        db.add(CourseGem(id=generate_uuid(), course_id=course3.id, gem_id=gem9.id, sort_order=0))
+
+        # Save some gems to learner's collection
+        db.add(UserGemCollection(id=generate_uuid(), user_id=user_learner.id, gem_id=gem1.id))
+        db.add(UserGemCollection(id=generate_uuid(), user_id=user_learner.id, gem_id=gem4.id))
+        db.add(UserGemCollection(id=generate_uuid(), user_id=user_learner.id, gem_id=gem5.id))
+
+        db.flush()
+
+        # ============================================================
+        # Quizzes seed data
+        # ============================================================
+
+        # Get first lesson of course1 (Introducción a Google Gemini) for quiz
+        first_lesson = db.query(Lesson).join(CourseModule).filter(
+            CourseModule.course_id == course1.id
+        ).order_by(CourseModule.sort_order, Lesson.sort_order).first()
+
+        if first_lesson:
+            quiz1 = Quiz(
+                id=generate_uuid(),
+                lesson_id=first_lesson.id,
+                title="Evaluación: Conceptos Básicos de Gemini",
+                description="Verifica tu comprensión de los conceptos fundamentales de Google Gemini",
+                passing_score=70,
+                max_attempts=3,
+                time_limit_seconds=600,
+                is_required=True,
+            )
+            db.add(quiz1)
+            db.flush()
+
+            # Question 1: Multiple Choice
+            q1 = QuizQuestion(
+                id=generate_uuid(), quiz_id=quiz1.id,
+                question_type=QuestionType.MULTIPLE_CHOICE,
+                question_text="¿Qué es Google Gemini?",
+                explanation="Google Gemini es un modelo de inteligencia artificial multimodal desarrollado por Google DeepMind.",
+                points=2, sort_order=1,
+            )
+            db.add(q1)
+            db.flush()
+            for i, (text, correct) in enumerate([
+                ("Un motor de búsqueda", False),
+                ("Un modelo de IA multimodal de Google", True),
+                ("Un sistema operativo", False),
+                ("Una red social", False),
+            ], 1):
+                db.add(QuizQuestionOption(id=generate_uuid(), question_id=q1.id, option_text=text, is_correct=correct, sort_order=i))
+
+            # Question 2: True/False
+            q2 = QuizQuestion(
+                id=generate_uuid(), quiz_id=quiz1.id,
+                question_type=QuestionType.TRUE_FALSE,
+                question_text="Google Gemini puede procesar texto, imágenes y audio simultáneamente.",
+                explanation="Correcto. Gemini es multimodal, lo que significa que puede entender y generar diferentes tipos de contenido.",
+                points=1, sort_order=2,
+            )
+            db.add(q2)
+            db.flush()
+            db.add(QuizQuestionOption(id=generate_uuid(), question_id=q2.id, option_text="Verdadero", is_correct=True, sort_order=1))
+            db.add(QuizQuestionOption(id=generate_uuid(), question_id=q2.id, option_text="Falso", is_correct=False, sort_order=2))
+
+            # Question 3: Multiple Choice
+            q3 = QuizQuestion(
+                id=generate_uuid(), quiz_id=quiz1.id,
+                question_type=QuestionType.MULTIPLE_CHOICE,
+                question_text="¿Cuál es la ventaja principal de usar Gemas personalizadas en Gemini?",
+                explanation="Las Gemas permiten crear asistentes especializados con instrucciones personalizadas para tareas específicas.",
+                points=2, sort_order=3,
+            )
+            db.add(q3)
+            db.flush()
+            for i, (text, correct) in enumerate([
+                ("Reducen el costo de la suscripción", False),
+                ("Permiten crear asistentes especializados para tareas específicas", True),
+                ("Aumentan la velocidad de internet", False),
+                ("Reemplazan completamente al equipo de trabajo", False),
+            ], 1):
+                db.add(QuizQuestionOption(id=generate_uuid(), question_id=q3.id, option_text=text, is_correct=correct, sort_order=i))
+
+            # Question 4: Short Answer
+            q4 = QuizQuestion(
+                id=generate_uuid(), quiz_id=quiz1.id,
+                question_type=QuestionType.SHORT_ANSWER,
+                question_text="Menciona un caso de uso de Google Gemini en el ámbito empresarial.",
+                explanation="Algunos ejemplos incluyen: análisis de datos, redacción de documentos, atención al cliente automatizada, generación de reportes, etc.",
+                points=2, sort_order=4,
+            )
+            db.add(q4)
+
+            # Question 5: True/False
+            q5 = QuizQuestion(
+                id=generate_uuid(), quiz_id=quiz1.id,
+                question_type=QuestionType.TRUE_FALSE,
+                question_text="Las Gemas de Gemini requieren conocimientos avanzados de programación para configurarse.",
+                explanation="Falso. Las Gemas se configuran mediante instrucciones en lenguaje natural, no requieren programación.",
+                points=1, sort_order=5,
+            )
+            db.add(q5)
+            db.flush()
+            db.add(QuizQuestionOption(id=generate_uuid(), question_id=q5.id, option_text="Verdadero", is_correct=False, sort_order=1))
+            db.add(QuizQuestionOption(id=generate_uuid(), question_id=q5.id, option_text="Falso", is_correct=True, sort_order=2))
+
+        # ── Quiz 2: Curso 2 — Creación de Gemas (last lesson of module 2) ──
+        # Uses ordering + matching + multiple_choice
+        c2_last_lesson = c2_m2_l3  # "Pruebas y refinamiento iterativo de Gemas"
+        quiz2 = Quiz(
+            id=generate_uuid(),
+            lesson_id=c2_last_lesson.id,
+            title="Evaluación: Creación de Gemas Personalizadas",
+            description="Demuestra tu dominio en la creación y refinamiento de Gemas de Gemini",
+            passing_score=60,
+            max_attempts=5,
+            time_limit_seconds=900,
+            is_required=True,
+        )
+        db.add(quiz2)
+        db.flush()
+
+        # Q1: Ordering — pasos para crear una gema
+        q2_1 = QuizQuestion(
+            id=generate_uuid(), quiz_id=quiz2.id,
+            question_type=QuestionType.ORDERING,
+            question_text="Ordena los pasos correctos para crear una Gema personalizada:",
+            explanation="El orden correcto es: definir objetivo → escribir instrucciones → probar con ejemplos → refinar iterativamente.",
+            points=3, sort_order=1,
+        )
+        db.add(q2_1)
+        db.flush()
+        for i, text in enumerate([
+            "Definir el objetivo y rol de la Gema",
+            "Escribir las instrucciones del sistema",
+            "Probar la Gema con ejemplos reales",
+            "Refinar iterativamente según resultados",
+        ], 1):
+            db.add(QuizQuestionOption(id=generate_uuid(), question_id=q2_1.id, option_text=text, is_correct=True, sort_order=i))
+
+        # Q2: Matching — emparejar conceptos con definiciones
+        q2_2 = QuizQuestion(
+            id=generate_uuid(), quiz_id=quiz2.id,
+            question_type=QuestionType.MATCHING,
+            question_text="Empareja cada componente de una Gema con su descripción:",
+            explanation="Cada componente tiene una función específica en la configuración de la Gema.",
+            points=4, sort_order=2,
+        )
+        db.add(q2_2)
+        db.flush()
+        for i, (text, target) in enumerate([
+            ("Instrucciones del sistema", "Define el comportamiento y personalidad de la Gema"),
+            ("Conversation starters", "Sugerencias iniciales para el usuario"),
+            ("Nombre de la Gema", "Identificador visible para los usuarios"),
+            ("Contexto empresarial", "Información específica del negocio que la Gema debe conocer"),
+        ], 1):
+            db.add(QuizQuestionOption(id=generate_uuid(), question_id=q2_2.id, option_text=text, is_correct=True, sort_order=i, match_target=target))
+
+        # Q3: Multiple Choice
+        q2_3 = QuizQuestion(
+            id=generate_uuid(), quiz_id=quiz2.id,
+            question_type=QuestionType.MULTIPLE_CHOICE,
+            question_text="¿Cuál es la mejor práctica al escribir instrucciones para una Gema?",
+            explanation="Las instrucciones deben ser específicas y con ejemplos concretos para obtener respuestas consistentes.",
+            points=2, sort_order=3,
+        )
+        db.add(q2_3)
+        db.flush()
+        for i, (text, correct) in enumerate([
+            ("Escribir instrucciones lo más cortas posible", False),
+            ("Ser específico, incluir ejemplos y definir el tono de respuesta", True),
+            ("Dejar las instrucciones vacías para mayor flexibilidad", False),
+            ("Copiar instrucciones de otras Gemas sin adaptarlas", False),
+        ], 1):
+            db.add(QuizQuestionOption(id=generate_uuid(), question_id=q2_3.id, option_text=text, is_correct=correct, sort_order=i))
+
+        # Q4: True/False
+        q2_4 = QuizQuestion(
+            id=generate_uuid(), quiz_id=quiz2.id,
+            question_type=QuestionType.TRUE_FALSE,
+            question_text="Una Gema puede ser compartida con todo el equipo a través de Google Workspace.",
+            explanation="Correcto. Las Gemas pueden ser públicas, privadas o compartidas con equipos específicos dentro de Workspace.",
+            points=1, sort_order=4,
+        )
+        db.add(q2_4)
+        db.flush()
+        db.add(QuizQuestionOption(id=generate_uuid(), question_id=q2_4.id, option_text="Verdadero", is_correct=True, sort_order=1))
+        db.add(QuizQuestionOption(id=generate_uuid(), question_id=q2_4.id, option_text="Falso", is_correct=False, sort_order=2))
+
+        # ── Quiz 3: Curso 3 — Ventas y CRM (last lesson of module 1) ──
+        c3_quiz_lesson = c3_m1_l4  # "Integración con Google Sheets para CRM básico"
+        quiz3 = Quiz(
+            id=generate_uuid(),
+            lesson_id=c3_quiz_lesson.id,
+            title="Evaluación: Gemas para Ventas y CRM",
+            description="Evalúa tu conocimiento sobre el uso de Gemas de Gemini para ventas",
+            passing_score=70,
+            max_attempts=3,
+            time_limit_seconds=None,  # Sin límite de tiempo
+            is_required=True,
+        )
+        db.add(quiz3)
+        db.flush()
+
+        # Q1: Multiple Choice
+        q3_1 = QuizQuestion(
+            id=generate_uuid(), quiz_id=quiz3.id,
+            question_type=QuestionType.MULTIPLE_CHOICE,
+            question_text="¿Qué función de Google Sheets es más útil para conectar datos de CRM con Gemini?",
+            explanation="IMPORTRANGE permite importar datos de otras hojas y QUERY permite consultar y filtrar datos, ambas esenciales para CRM.",
+            points=2, sort_order=1,
+        )
+        db.add(q3_1)
+        db.flush()
+        for i, (text, correct) in enumerate([
+            ("CONCATENATE y TRIM", False),
+            ("IMPORTRANGE y QUERY", True),
+            ("SUM y AVERAGE", False),
+            ("VLOOKUP solamente", False),
+        ], 1):
+            db.add(QuizQuestionOption(id=generate_uuid(), question_id=q3_1.id, option_text=text, is_correct=correct, sort_order=i))
+
+        # Q2: Ordering — pipeline de ventas
+        q3_2 = QuizQuestion(
+            id=generate_uuid(), quiz_id=quiz3.id,
+            question_type=QuestionType.ORDERING,
+            question_text="Ordena las etapas del pipeline de ventas asistido por Gemini:",
+            explanation="El pipeline correcto sigue: prospección → calificación → propuesta → negociación → cierre.",
+            points=3, sort_order=2,
+        )
+        db.add(q3_2)
+        db.flush()
+        for i, text in enumerate([
+            "Prospección de clientes potenciales",
+            "Calificación de leads con IA",
+            "Generación de propuesta personalizada",
+            "Negociación y seguimiento",
+            "Cierre y documentación",
+        ], 1):
+            db.add(QuizQuestionOption(id=generate_uuid(), question_id=q3_2.id, option_text=text, is_correct=True, sort_order=i))
+
+        # Q3: Short Answer
+        q3_3 = QuizQuestion(
+            id=generate_uuid(), quiz_id=quiz3.id,
+            question_type=QuestionType.SHORT_ANSWER,
+            question_text="Describe una ventaja de usar una Gema de Gemini para generar propuestas comerciales en lugar de hacerlas manualmente.",
+            explanation="Las Gemas pueden personalizar propuestas automáticamente según datos del cliente, ahorrando tiempo y mejorando la consistencia.",
+            points=2, sort_order=3,
+        )
+        db.add(q3_3)
+
+        # Q4: True/False
+        q3_4 = QuizQuestion(
+            id=generate_uuid(), quiz_id=quiz3.id,
+            question_type=QuestionType.TRUE_FALSE,
+            question_text="Google Sheets puede funcionar como un CRM básico cuando se combina con Gemas de Gemini.",
+            explanation="Verdadero. Con fórmulas avanzadas y la asistencia de Gemini, Sheets puede gestionar contactos, oportunidades y seguimientos.",
+            points=1, sort_order=4,
+        )
+        db.add(q3_4)
+        db.flush()
+        db.add(QuizQuestionOption(id=generate_uuid(), question_id=q3_4.id, option_text="Verdadero", is_correct=True, sort_order=1))
+        db.add(QuizQuestionOption(id=generate_uuid(), question_id=q3_4.id, option_text="Falso", is_correct=False, sort_order=2))
+
+        db.flush()
+
+        # ── Quiz Final: Curso 1 — Introducción a Google Gemini ──
+        quiz_final_c1 = Quiz(
+            id=generate_uuid(), lesson_id=c1_final.id,
+            title="Examen Final: Google Gemini para Empresas",
+            description="Evaluación integral que cubre todos los módulos del curso. Aprueba con 70% para completar el curso.",
+            passing_score=70, max_attempts=3, time_limit_seconds=1200, is_required=True,
+        )
+        db.add(quiz_final_c1)
+        db.flush()
+
+        for sort, (qtype, text, explanation, opts) in enumerate([
+            (QuestionType.MULTIPLE_CHOICE, "¿Cuál de las siguientes NO es una capacidad de Google Gemini?",
+             "Gemini es multimodal (texto, imagen, audio, video) pero no puede ejecutar transacciones bancarias directamente.",
+             [("Generar texto a partir de imágenes", False), ("Resumir documentos largos", False),
+              ("Ejecutar transacciones bancarias automáticas", True), ("Analizar datos en hojas de cálculo", False)]),
+            (QuestionType.TRUE_FALSE, "Gemini en Google Workspace tiene acceso a los datos empresariales del usuario con las mismas políticas de privacidad que el resto de Workspace.",
+             "Verdadero. Gemini en Workspace opera bajo las mismas políticas de privacidad y cumplimiento.", None),
+            (QuestionType.MULTIPLE_CHOICE, "¿Qué técnica de prompting produce mejores resultados en Gemini?",
+             "Dar contexto, ser específico y proporcionar ejemplos produce respuestas más precisas y útiles.",
+             [("Escribir prompts lo más cortos posible", False), ("Dar contexto, ser específico y dar ejemplos", True),
+              ("Usar solo palabras clave sin oraciones", False), ("Repetir la misma pregunta varias veces", False)]),
+            (QuestionType.MATCHING, "Empareja cada aplicación de Google Workspace con su principal beneficio al integrar Gemini:",
+             "Cada aplicación tiene capacidades específicas de IA.",
+             [("Gmail", "Redacción y resumen de correos"), ("Google Docs", "Generación y revisión de contenido"),
+              ("Google Sheets", "Análisis de datos con lenguaje natural"), ("Google Slides", "Creación automática de presentaciones")]),
+            (QuestionType.ORDERING, "Ordena los pasos recomendados para implementar Gemini en una empresa:",
+             "La implementación gradual asegura mejor adopción.",
+             ["Evaluar necesidades del equipo", "Configurar Gemini en Workspace", "Capacitar al equipo con casos de uso",
+              "Medir resultados y optimizar"]),
+            (QuestionType.SHORT_ANSWER, "¿Qué consideración ética es más importante al usar Gemini con datos de clientes?",
+             "La privacidad, el consentimiento y la transparencia sobre el uso de IA son fundamentales.", None),
+        ], 1):
+            q = QuizQuestion(id=generate_uuid(), quiz_id=quiz_final_c1.id, question_type=qtype,
+                             question_text=text, explanation=explanation, points=2, sort_order=sort)
+            db.add(q)
+            db.flush()
+            if qtype == QuestionType.MULTIPLE_CHOICE and opts:
+                for i, (ot, oc) in enumerate(opts, 1):
+                    db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text=ot, is_correct=oc, sort_order=i))
+            elif qtype == QuestionType.TRUE_FALSE:
+                db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text="Verdadero", is_correct=True, sort_order=1))
+                db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text="Falso", is_correct=False, sort_order=2))
+            elif qtype == QuestionType.MATCHING and opts:
+                for i, (ot, mt) in enumerate(opts, 1):
+                    db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text=ot, is_correct=True, sort_order=i, match_target=mt))
+            elif qtype == QuestionType.ORDERING and opts:
+                for i, ot in enumerate(opts, 1):
+                    db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text=ot, is_correct=True, sort_order=i))
+
+        # ── Quiz Final: Curso 2 — Creación de Gemas Personalizadas ──
+        quiz_final_c2 = Quiz(
+            id=generate_uuid(), lesson_id=c2_final.id,
+            title="Examen Final: Gemas Personalizadas",
+            description="Demuestra tu dominio en diseño, creación y gestión de Gemas de Google Gemini.",
+            passing_score=70, max_attempts=3, time_limit_seconds=1200, is_required=True,
+        )
+        db.add(quiz_final_c2)
+        db.flush()
+
+        for sort, (qtype, text, explanation, opts) in enumerate([
+            (QuestionType.ORDERING, "Ordena el ciclo completo de vida de una Gema empresarial:",
+             "Una Gema exitosa pasa por diseño, desarrollo, prueba, publicación y mantenimiento continuo.",
+             ["Identificar necesidad del equipo", "Diseñar instrucciones del sistema", "Probar con usuarios reales",
+              "Publicar y compartir", "Monitorear uso y actualizar"]),
+            (QuestionType.MULTIPLE_CHOICE, "¿Qué elemento es MÁS crítico en las instrucciones del sistema de una Gema?",
+             "Un rol claro y contexto específico son la base de instrucciones efectivas.",
+             [("El nombre de la Gema", False), ("El rol y contexto específico del asistente", True),
+              ("La cantidad de palabras", False), ("El idioma de las instrucciones", False)]),
+            (QuestionType.MATCHING, "Relaciona cada tipo de Gema con su mejor caso de uso:",
+             "Cada tipo tiene ventajas específicas según el contexto.",
+             [("Gema privada", "Uso personal o prototipos"), ("Gema de equipo", "Procesos departamentales"),
+              ("Gema pública", "Recursos compartidos con toda la organización")]),
+            (QuestionType.TRUE_FALSE, "Es recomendable actualizar las instrucciones de una Gema cada vez que cambian los procesos del equipo.",
+             "Verdadero. Las Gemas deben mantenerse alineadas con los procesos actuales para ser efectivas.", None),
+            (QuestionType.SHORT_ANSWER, "Describe cómo medirías el éxito de una Gema empresarial desplegada en tu equipo.",
+             "Se puede medir por adopción (usuarios activos), satisfacción, tiempo ahorrado y calidad de los resultados.", None),
+        ], 1):
+            q = QuizQuestion(id=generate_uuid(), quiz_id=quiz_final_c2.id, question_type=qtype,
+                             question_text=text, explanation=explanation, points=2, sort_order=sort)
+            db.add(q)
+            db.flush()
+            if qtype == QuestionType.MULTIPLE_CHOICE and opts:
+                for i, (ot, oc) in enumerate(opts, 1):
+                    db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text=ot, is_correct=oc, sort_order=i))
+            elif qtype == QuestionType.TRUE_FALSE:
+                db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text="Verdadero", is_correct=True, sort_order=1))
+                db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text="Falso", is_correct=False, sort_order=2))
+            elif qtype == QuestionType.MATCHING and opts:
+                for i, (ot, mt) in enumerate(opts, 1):
+                    db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text=ot, is_correct=True, sort_order=i, match_target=mt))
+            elif qtype == QuestionType.ORDERING and opts:
+                for i, ot in enumerate(opts, 1):
+                    db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text=ot, is_correct=True, sort_order=i))
+
+        # ── Quiz Final: Curso 4 — Google Workspace + Gemini ──
+        quiz_final_c4 = Quiz(
+            id=generate_uuid(), lesson_id=c4_final.id,
+            title="Examen Final: Google Workspace + Gemini",
+            description="Evaluación integral sobre el uso de Gemini en Gmail, Docs, Sheets y Slides.",
+            passing_score=70, max_attempts=3, time_limit_seconds=1500, is_required=True,
+        )
+        db.add(quiz_final_c4)
+        db.flush()
+
+        for sort, (qtype, text, explanation, opts) in enumerate([
+            (QuestionType.MATCHING, "Empareja cada funcionalidad de Gemini con la app de Workspace donde se usa:",
+             "Cada app de Workspace tiene integraciones específicas de Gemini.",
+             [("Redacción inteligente de correos", "Gmail"), ("Fórmulas con lenguaje natural", "Sheets"),
+              ("Resúmenes ejecutivos de documentos", "Docs"), ("Speaker notes automáticas", "Slides")]),
+            (QuestionType.MULTIPLE_CHOICE, "¿Cuál es la ventaja principal de usar Gemini en Google Sheets?",
+             "Sheets + Gemini permite hacer análisis de datos usando preguntas en lenguaje natural.",
+             [("Cambiar colores de las celdas automáticamente", False), ("Analizar datos usando lenguaje natural", True),
+              ("Reemplazar Excel completamente", False), ("Enviar hojas por correo automáticamente", False)]),
+            (QuestionType.ORDERING, "Ordena el flujo de trabajo para crear una presentación ejecutiva con Gemini:",
+             "El flujo óptimo empieza con el contenido y termina con el ensayo.",
+             ["Redactar el contenido en Docs con Gemini", "Generar la presentación en Slides", "Agregar speaker notes con IA",
+              "Revisar y ajustar el diseño", "Ensayar con las notas generadas"]),
+            (QuestionType.TRUE_FALSE, "Gemini puede generar gráficos automáticamente en Google Sheets a partir de datos existentes.",
+             "Verdadero. Gemini analiza los datos y sugiere las visualizaciones más apropiadas.", None),
+            (QuestionType.MULTIPLE_CHOICE, "¿Qué técnica es MÁS efectiva para resumir hilos largos de correo en Gmail con Gemini?",
+             "Pedir un resumen con puntos de acción produce los resultados más útiles.",
+             [("Reenviar el hilo a otro correo", False), ("Pedir un resumen con puntos de acción específicos", True),
+              ("Leer cada correo individualmente", False), ("Usar solo el buscador de Gmail", False)]),
+            (QuestionType.SHORT_ANSWER, "¿Cómo usarías Gemini en Google Docs para mejorar un documento que tiene problemas de claridad y tono?",
+             "Se puede pedir a Gemini que revise el tono, simplifique el lenguaje y sugiera una estructura más clara.", None),
+        ], 1):
+            q = QuizQuestion(id=generate_uuid(), quiz_id=quiz_final_c4.id, question_type=qtype,
+                             question_text=text, explanation=explanation, points=2, sort_order=sort)
+            db.add(q)
+            db.flush()
+            if qtype == QuestionType.MULTIPLE_CHOICE and opts:
+                for i, (ot, oc) in enumerate(opts, 1):
+                    db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text=ot, is_correct=oc, sort_order=i))
+            elif qtype == QuestionType.TRUE_FALSE:
+                db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text="Verdadero", is_correct=True, sort_order=1))
+                db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text="Falso", is_correct=False, sort_order=2))
+            elif qtype == QuestionType.MATCHING and opts:
+                for i, (ot, mt) in enumerate(opts, 1):
+                    db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text=ot, is_correct=True, sort_order=i, match_target=mt))
+            elif qtype == QuestionType.ORDERING and opts:
+                for i, ot in enumerate(opts, 1):
+                    db.add(QuizQuestionOption(id=generate_uuid(), question_id=q.id, option_text=ot, is_correct=True, sort_order=i))
+
+        db.flush()
+
+        # ============================================================
+        # Certifications seed data
+        # ============================================================
+
+        cert1 = CourseCertification(
+            id=generate_uuid(),
+            course_id=course1.id,
+            title="Certificación en Google Gemini para Empresas",
+            description="Certifica tus conocimientos en el uso de Google Gemini en entornos empresariales. Válida por 1 año.",
+            cost=50.00,
+            validity_days=365,
+        )
+        db.add(cert1)
+
+        cert2 = CourseCertification(
+            id=generate_uuid(),
+            course_id=course2.id,
+            title="Certificación en Gemas Personalizadas de Gemini",
+            description="Certifica tu capacidad de crear, configurar y administrar Gemas de Google Gemini. Válida por 1 año.",
+            cost=50.00,
+            validity_days=365,
+        )
+        db.add(cert2)
+
+        cert3 = CourseCertification(
+            id=generate_uuid(),
+            course_id=course4.id,
+            title="Certificación en Google Workspace + Gemini",
+            description="Certifica tu dominio de Gemini integrado con Gmail, Docs, Sheets y Slides. Válida por 1 año.",
+            cost=50.00,
+            validity_days=365,
+        )
+        db.add(cert3)
+
+        # ============================================================
+        # Course Access Grants seed data
+        # ============================================================
+
+        # Grant learner access to all courses (all are free by default, but demo the grants)
+        for c in [course1, course2, course3, course4, course5]:
+            db.add(UserCourseGrant(
+                id=generate_uuid(),
+                user_id=user_learner.id,
+                course_id=c.id,
+                granted_by_user_id=user_admin.id,
+            ))
+
+        db.flush()
+        db.commit()
+
         print("✓ Database seeded successfully!")
         print("\n📝 Mock Users Created:")
         print("  - Super Admin: superadmin@example.com (password: password123)")
@@ -1045,7 +1723,24 @@ def seed_database():
         print("  - 7 badges (5 por completar cursos, 1 early bird, 1 halfway)")
         print("  - 8 relaciones curso-badge con porcentajes de obtención")
         print("  - 2 badges otorgados al learner")
-        print("\n🎯 Total: 5 courses, 15 modules, 43 lessons, 7 badges")
+        print("\n💎 Mock Gem Bank Created:")
+        print("  - 6 categorías, 18 tags, 10 gemas (5 destacadas)")
+        print("  - 3 gemas guardadas en colección del learner")
+        print("  - Gemas asociadas a 3 cursos")
+        print("\n📝 Quizzes Created:")
+        print("  - Quiz lección (Curso 1): 5 preguntas — 70%, 3 intentos, 10min")
+        print("  - Quiz lección (Curso 2): 4 preguntas — 60%, 5 intentos, 15min")
+        print("  - Quiz lección (Curso 3): 4 preguntas — 70%, 3 intentos, sin límite")
+        print("  - FINAL (Curso 1): 6 preguntas (2 MC, 1 T/F, 1 matching, 1 ordering, 1 SA) — 70%, 20min")
+        print("  - FINAL (Curso 2): 5 preguntas (1 ordering, 1 MC, 1 matching, 1 T/F, 1 SA) — 70%, 20min")
+        print("  - FINAL (Curso 4): 6 preguntas (1 matching, 2 MC, 1 ordering, 1 T/F, 1 SA) — 70%, 25min")
+        print("\n📜 Certifications Created ($50 USD cada una):")
+        print("  - Certificación en Google Gemini para Empresas (Curso 1)")
+        print("  - Certificación en Gemas Personalizadas (Curso 2)")
+        print("  - Certificación en Google Workspace + Gemini (Curso 4)")
+        print("\n🔑 Course Grants:")
+        print("  - Learner tiene acceso a todos los cursos")
+        print("\n🎯 Total: 10 courses, 46 lessons, 7 badges, 10 gems, 6 quizzes (30 preguntas), 3 certs ($50)")
 
     except Exception as e:
         db.rollback()

@@ -27,7 +27,7 @@ from src.db.models.learning_platform import (
     LessonProgress,
     LessonProgressStatus,
 )
-from src.db.models.learning_platform import Badge, CourseBadge, UserBadge
+from src.db.models.learning_platform import Badge, CourseBadge, UserBadge, CourseGem, LessonGem, Gem, GemTagLink, GemTag, PublicationStatus as GemPubStatus, UserGemCollection, Quiz, QuizAttempt, QuizAttemptStatus, CourseCertification
 from src.schemas.user import (
     CourseRead,
     CourseAssignmentCreate,
@@ -172,6 +172,11 @@ def get_available_courses(
         .all()
     )
 
+    # Precompute which courses have certifications
+    cert_course_ids = set(
+        row[0] for row in db.query(CourseCertification.course_id).all()
+    )
+
     result = []
     for course in courses:
         modules_count = (
@@ -236,6 +241,7 @@ def get_available_courses(
                     status=enrollment.status.value,
                     progress_percent=float(enrollment.progress_percent),
                 ) if enrollment else None,
+                has_certification=course.id in cert_course_ids,
             )
         )
 
@@ -258,6 +264,42 @@ def get_user_pending_courses(
             Enrollment.user_id == current_user.id,
             Enrollment.status == EnrollmentStatus.active,
         )
+        .all()
+    )
+
+    return [
+        EnrollmentRead(
+            id=enrollment.id,
+            course_id=enrollment.course_id,
+            status=enrollment.status.value,
+            progress_percent=float(enrollment.progress_percent),
+            course=CourseRead(
+                id=enrollment.course.id,
+                title=enrollment.course.title,
+                description=enrollment.course.description,
+                status=enrollment.course.status.value,
+                estimated_minutes=enrollment.course.estimated_minutes,
+                cover_url=enrollment.course.cover_url,
+            ) if enrollment.course else None,
+        )
+        for enrollment in enrollments
+    ]
+
+
+@router.get("/user/completed", response_model=list[EnrollmentRead])
+def get_user_completed_courses(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get completed courses for the current user, most recent first."""
+    enrollments = (
+        db.query(Enrollment)
+        .options(joinedload(Enrollment.course))
+        .filter(
+            Enrollment.user_id == current_user.id,
+            Enrollment.status == EnrollmentStatus.completed,
+        )
+        .order_by(Enrollment.completed_at.desc())
         .all()
     )
 
@@ -667,6 +709,7 @@ def get_course_card(
             status=enrollment.status.value,
             progress_percent=float(enrollment.progress_percent),
         ) if enrollment else None,
+        has_certification=db.query(CourseCertification).filter(CourseCertification.course_id == course_id).first() is not None,
     )
 
 
@@ -808,6 +851,15 @@ def get_course_detailed(
     )
     for lp in lesson_progresses:
         lesson_progress_map[lp.lesson_id] = lp
+
+    # Get lesson IDs that have quizzes
+    quiz_lesson_ids = set(
+        row[0] for row in db.query(Quiz.lesson_id).filter(
+            Quiz.lesson_id.in_([
+                l.id for m in course.modules for l in m.lessons
+            ])
+        ).all()
+    )
     
     # Build modules with lessons including progress
     modules_data = []
@@ -837,6 +889,7 @@ def get_course_detailed(
                     estimated_minutes=lesson.estimated_minutes,
                     status=status,
                     progress_percent=progress_percent,
+                    has_quiz=lesson.id in quiz_lesson_ids,
                 )
             )
         
@@ -1047,11 +1100,33 @@ def update_lesson_progress(
         lesson_progress.time_spent_seconds = progress_data.time_spent_seconds
         lesson_progress.last_activity_at = datetime.utcnow()
         
-        # Mark as completed if progress is 100% or status is completed
-        if progress_data.progress_percent >= 100 or status_enum == LessonProgressStatus.completed:
+        # Quiz gate: check if lesson has a required quiz that must be passed
+        quiz_required = False
+        quiz = db.query(Quiz).filter(Quiz.lesson_id == lesson_id, Quiz.is_required.is_(True)).first()
+        if quiz:
+            quiz_required = True
+            quiz_passed = (
+                db.query(QuizAttempt)
+                .filter(
+                    QuizAttempt.quiz_id == quiz.id,
+                    QuizAttempt.user_id == current_user.id,
+                    QuizAttempt.passed.is_(True),
+                )
+                .first()
+            ) is not None
+        else:
+            quiz_passed = True
+
+        # Mark as completed if progress is 100% or status is completed — BUT only if quiz is passed
+        wants_complete = progress_data.progress_percent >= 100 or status_enum == LessonProgressStatus.completed
+        if wants_complete and quiz_passed:
             lesson_progress.status = LessonProgressStatus.completed
             if not lesson_progress.completed_at:
                 lesson_progress.completed_at = datetime.utcnow()
+        elif wants_complete and not quiz_passed:
+            # Cap at 99% — quiz not yet passed
+            lesson_progress.progress_percent = min(lesson_progress.progress_percent, Decimal("99.00"))
+            lesson_progress.status = LessonProgressStatus.in_progress
     else:
         # Create new progress entry
         lesson_progress = LessonProgress(
@@ -1063,11 +1138,27 @@ def update_lesson_progress(
             time_spent_seconds=progress_data.time_spent_seconds,
             last_activity_at=datetime.utcnow(),
         )
-        
-        # Mark as completed if progress is 100% or status is completed
-        if progress_data.progress_percent >= 100 or status_enum == LessonProgressStatus.completed:
+
+        # Quiz gate for new entries too
+        quiz_required = False
+        quiz = db.query(Quiz).filter(Quiz.lesson_id == lesson_id, Quiz.is_required.is_(True)).first()
+        if quiz:
+            quiz_required = True
+            quiz_passed = (
+                db.query(QuizAttempt)
+                .filter(QuizAttempt.quiz_id == quiz.id, QuizAttempt.user_id == current_user.id, QuizAttempt.passed.is_(True))
+                .first()
+            ) is not None
+        else:
+            quiz_passed = True
+
+        wants_complete = progress_data.progress_percent >= 100 or status_enum == LessonProgressStatus.completed
+        if wants_complete and quiz_passed:
             lesson_progress.status = LessonProgressStatus.completed
             lesson_progress.completed_at = datetime.utcnow()
+        elif wants_complete and not quiz_passed:
+            lesson_progress.progress_percent = min(Decimal(str(progress_data.progress_percent)), Decimal("99.00"))
+            lesson_progress.status = LessonProgressStatus.in_progress
         
         db.add(lesson_progress)
     
@@ -1174,4 +1265,117 @@ def update_lesson_progress(
         time_spent_seconds=lesson_progress.time_spent_seconds,
         enrollment_progress_percent=float(enrollment.progress_percent),
         earned_badges=earned_badges,
+        quiz_required=quiz_required,
     )
+
+
+# ============================================================
+# Gems associated with courses and lessons
+# ============================================================
+
+from src.schemas.gems import GemCardRead, GemCategoryRead, GemCreatorRead, GemTagRead, AreaRead as GemAreaRead
+
+
+def _course_gem_to_card(gem: Gem, saved_ids: set[str], saves_counts: dict[str, int]) -> GemCardRead:
+    tags = [GemTagRead(id=link.tag.id, name=link.tag.name) for link in gem.tag_links]
+    return GemCardRead(
+        id=gem.id,
+        title=gem.title,
+        description=gem.description,
+        icon_url=gem.icon_url,
+        gemini_url=gem.gemini_url,
+        visibility=gem.visibility.value,
+        is_featured=gem.is_featured,
+        status=gem.status.value,
+        saves_count=saves_counts.get(gem.id, 0),
+        created_at=gem.created_at,
+        category=GemCategoryRead(
+            id=gem.category.id, name=gem.category.name,
+            description=gem.category.description, icon=gem.category.icon,
+            sort_order=gem.category.sort_order,
+        ) if gem.category else None,
+        area=GemAreaRead(id=gem.area.id, name=gem.area.name) if gem.area else None,
+        created_by_user=GemCreatorRead(
+            id=gem.created_by_user.id,
+            first_name=gem.created_by_user.first_name,
+            last_name=gem.created_by_user.last_name,
+        ),
+        tags=tags,
+        is_saved=gem.id in saved_ids,
+    )
+
+
+def _get_course_gem_saves_counts(gem_ids: list[str], db: Session) -> dict[str, int]:
+    if not gem_ids:
+        return {}
+    rows = (
+        db.query(UserGemCollection.gem_id, func.count(UserGemCollection.id))
+        .filter(UserGemCollection.gem_id.in_(gem_ids))
+        .group_by(UserGemCollection.gem_id)
+        .all()
+    )
+    return {gid: cnt for gid, cnt in rows}
+
+
+def _get_user_saved_gem_ids(session_id: str | None, db: Session) -> set[str]:
+    if not session_id:
+        return set()
+    from src.core.auth import validate_session as _vs
+    sess = _vs(session_id, db)
+    if not sess:
+        return set()
+    rows = db.query(UserGemCollection.gem_id).filter(UserGemCollection.user_id == sess["user_id"]).all()
+    return {r[0] for r in rows}
+
+
+@router.get("/{course_id}/gems", response_model=list[GemCardRead])
+def get_course_gems(
+    course_id: str,
+    session_id: str | None = Cookie(None),
+    db: Session = Depends(get_db),
+):
+    """Get gems associated with a course."""
+    saved_ids = _get_user_saved_gem_ids(session_id, db)
+    course_gems = (
+        db.query(CourseGem)
+        .options(
+            joinedload(CourseGem.gem).joinedload(Gem.category),
+            joinedload(CourseGem.gem).joinedload(Gem.area),
+            joinedload(CourseGem.gem).joinedload(Gem.created_by_user),
+            joinedload(CourseGem.gem).joinedload(Gem.tag_links).joinedload(GemTagLink.tag),
+        )
+        .filter(CourseGem.course_id == course_id)
+        .order_by(CourseGem.sort_order)
+        .all()
+    )
+    published_gems = [cg.gem for cg in course_gems if cg.gem.status == GemPubStatus.PUBLISHED]
+    gem_ids = [g.id for g in published_gems]
+    saves_counts = _get_course_gem_saves_counts(gem_ids, db)
+    return [_course_gem_to_card(g, saved_ids, saves_counts) for g in published_gems]
+
+
+@router.get("/{course_id}/lessons/{lesson_id}/gems", response_model=list[GemCardRead])
+def get_lesson_gems(
+    course_id: str,
+    lesson_id: str,
+    session_id: str | None = Cookie(None),
+    db: Session = Depends(get_db),
+):
+    """Get gems associated with a lesson."""
+    saved_ids = _get_user_saved_gem_ids(session_id, db)
+    lesson_gems = (
+        db.query(LessonGem)
+        .options(
+            joinedload(LessonGem.gem).joinedload(Gem.category),
+            joinedload(LessonGem.gem).joinedload(Gem.area),
+            joinedload(LessonGem.gem).joinedload(Gem.created_by_user),
+            joinedload(LessonGem.gem).joinedload(Gem.tag_links).joinedload(GemTagLink.tag),
+        )
+        .filter(LessonGem.lesson_id == lesson_id)
+        .order_by(LessonGem.sort_order)
+        .all()
+    )
+    published_gems = [lg.gem for lg in lesson_gems if lg.gem.status == GemPubStatus.PUBLISHED]
+    gem_ids = [g.id for g in published_gems]
+    saves_counts = _get_course_gem_saves_counts(gem_ids, db)
+    return [_course_gem_to_card(g, saved_ids, saves_counts) for g in published_gems]

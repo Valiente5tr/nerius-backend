@@ -3,9 +3,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, Cookie, Request
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func
+from sqlalchemy.orm import joinedload
+
 from src.core.auth import authenticate_user, create_session, validate_session, invalidate_session
 from src.db.session import get_db
-from src.schemas.user import LoginRequest, LoginResponse, UserRead
+from src.schemas.user import LoginRequest, LoginResponse, UserRead, UserProfileRead, UserStatsRead
 
 router = APIRouter(tags=["auth"])
 
@@ -73,41 +76,122 @@ def logout(
     return {"message": "Logout successful"}
 
 
-@router.get("/me", response_model=UserRead)
+def _get_authenticated_user(session_id: str | None, db: Session):
+    """Helper: validate session and return User ORM instance."""
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    session = validate_session(session_id, db)
+    if not session:
+        raise HTTPException(status_code=401, detail="Session expired or invalid")
+    from src.db.models.learning_platform import User
+    user = (
+        db.query(User)
+        .options(joinedload(User.area), joinedload(User.user_role_links))
+        .filter(User.id == session["user_id"])
+        .first()
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
+@router.get("/me", response_model=UserProfileRead)
 def get_current_user(
     session_id: str | None = Cookie(None),
     db: Session = Depends(get_db),
 ):
-    """Get current logged-in user information."""
-    if not session_id:
-        raise HTTPException(
-            status_code=401,
-            detail="Not authenticated",
-        )
+    """Get current logged-in user information with area and role."""
+    user = _get_authenticated_user(session_id, db)
 
-    session = validate_session(session_id, db)
-    if not session:
-        raise HTTPException(
-            status_code=401,
-            detail="Session expired or invalid",
-        )
+    # Get role name from user_role_links
+    from src.db.models.learning_platform import Role
+    role_name = None
+    if user.user_role_links:
+        role = db.query(Role).filter(Role.id == user.user_role_links[0].role_id).first()
+        if role:
+            role_name = role.name.value
 
-    # Get user from database
-    from src.db.models.learning_platform import User
-    user = db.query(User).filter(User.id == session["user_id"]).first()
-    
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found",
-        )
-
-    return UserRead(
+    return UserProfileRead(
         id=user.id,
         email=user.email,
         first_name=user.first_name,
         last_name=user.last_name,
         status=user.status.value,
+        area_name=user.area.name if user.area else None,
+        role_name=role_name,
+        created_at=user.created_at,
+    )
+
+
+@router.get("/me/stats", response_model=UserStatsRead)
+def get_current_user_stats(
+    session_id: str | None = Cookie(None),
+    db: Session = Depends(get_db),
+):
+    """Get real computed stats for the current user's profile."""
+    user = _get_authenticated_user(session_id, db)
+
+    from src.db.models.learning_platform import (
+        Enrollment, EnrollmentStatus, LessonProgress, UserBadge, UserGemCollection,
+    )
+
+    # Completed courses
+    completed_courses = (
+        db.query(func.count(Enrollment.id))
+        .filter(Enrollment.user_id == user.id, Enrollment.status == EnrollmentStatus.completed)
+        .scalar() or 0
+    )
+
+    # Enrolled courses (active)
+    enrolled_courses = (
+        db.query(func.count(Enrollment.id))
+        .filter(Enrollment.user_id == user.id, Enrollment.status == EnrollmentStatus.active)
+        .scalar() or 0
+    )
+
+    # Total hours (from lesson_progress.time_spent_seconds via enrollments)
+    total_seconds = (
+        db.query(func.sum(LessonProgress.time_spent_seconds))
+        .join(Enrollment, LessonProgress.enrollment_id == Enrollment.id)
+        .filter(Enrollment.user_id == user.id)
+        .scalar() or 0
+    )
+    total_hours = round(total_seconds / 3600, 1)
+
+    # Badges count
+    badges_count = (
+        db.query(func.count(UserBadge.id))
+        .filter(UserBadge.user_id == user.id)
+        .scalar() or 0
+    )
+
+    # Saved gems count
+    saved_gems_count = (
+        db.query(func.count(UserGemCollection.id))
+        .filter(UserGemCollection.user_id == user.id)
+        .scalar() or 0
+    )
+
+    # Rank: count users with more completed courses than this user
+    if completed_courses > 0:
+        users_ahead = (
+            db.query(func.count(func.distinct(Enrollment.user_id)))
+            .filter(Enrollment.status == EnrollmentStatus.completed)
+            .group_by(Enrollment.user_id)
+            .having(func.count(Enrollment.id) > completed_courses)
+            .count()
+        )
+        rank = users_ahead + 1
+    else:
+        rank = None
+
+    return UserStatsRead(
+        completed_courses=completed_courses,
+        enrolled_courses=enrolled_courses,
+        total_hours=total_hours,
+        rank=rank,
+        badges_count=badges_count,
+        saved_gems_count=saved_gems_count,
     )
 
 

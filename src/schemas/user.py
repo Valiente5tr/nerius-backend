@@ -20,6 +20,27 @@ class UserRead(UserBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class UserProfileRead(UserBase):
+    """Enriched user profile with area, role, and created_at."""
+    id: str
+    status: str
+    area_name: str | None = None
+    role_name: str | None = None
+    created_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserStatsRead(BaseModel):
+    """Real computed stats for the user profile."""
+    completed_courses: int = 0
+    total_hours: float = 0
+    rank: int | None = None
+    badges_count: int = 0
+    saved_gems_count: int = 0
+    enrolled_courses: int = 0
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
@@ -46,6 +67,7 @@ class EnrollmentRead(BaseModel):
     course_id: str
     status: str
     progress_percent: float
+    completed_at: datetime | None = None
     course: CourseRead | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -106,6 +128,7 @@ class LessonWithProgressRead(LessonBasicRead):
     """Lesson with progress information but without resources."""
     status: str  # not_started, in_progress, completed
     progress_percent: float
+    has_quiz: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -214,6 +237,7 @@ class CourseCardRead(BaseModel):
     total_completed: int
     is_enrolled: bool
     enrollment: EnrollmentRead | None = None
+    has_certification: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -231,3 +255,4 @@ class LessonProgressUpdateResponse(BaseModel):
     time_spent_seconds: int
     enrollment_progress_percent: float
     earned_badges: list[EarnedBadgeNotification] = []
+    quiz_required: bool = False
