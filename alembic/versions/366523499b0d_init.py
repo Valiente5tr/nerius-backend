@@ -1,8 +1,8 @@
 """init
 
-Revision ID: 538acc213847
+Revision ID: 366523499b0d
 Revises: 
-Create Date: 2026-03-11 22:30:24.765817
+Create Date: 2026-04-08 22:12:30.999298
 
 """
 from typing import Sequence, Union
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '538acc213847'
+revision: str = '366523499b0d'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -32,9 +32,28 @@ def upgrade() -> None:
     sa.Column('name', sa.String(length=120), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('icon_url', sa.Text(), nullable=True),
+    sa.Column('main_color', sa.String(length=20), server_default='#3b82f6', nullable=False),
+    sa.Column('secondary_color', sa.String(length=20), server_default='#1e40af', nullable=False),
     sa.Column('id', sa.CHAR(length=36), nullable=False),
     sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.PrimaryKeyConstraint('id')
+    )
+    op.create_table('gem_categories',
+    sa.Column('name', sa.String(length=120), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('icon', sa.String(length=50), nullable=True),
+    sa.Column('sort_order', sa.Integer(), server_default=sa.text('0'), nullable=False),
+    sa.Column('id', sa.CHAR(length=36), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('name')
+    )
+    op.create_table('gem_tags',
+    sa.Column('name', sa.String(length=60), nullable=False),
+    sa.Column('id', sa.CHAR(length=36), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('name')
     )
     op.create_table('roles',
     sa.Column('name', sa.Enum('SUPER_ADMIN', 'CONTENT_ADMIN', 'LEARNER', name='role_name_enum', native_enum=False), nullable=False),
@@ -78,6 +97,7 @@ def upgrade() -> None:
     sa.Column('author_user_id', sa.CHAR(length=36), nullable=False),
     sa.Column('title', sa.String(length=180), nullable=False),
     sa.Column('content', sa.Text(), nullable=False),
+    sa.Column('multimedia_url', sa.String(length=500), nullable=True),
     sa.Column('status', sa.Enum('DRAFT', 'PUBLISHED', 'ARCHIVED', name='forum_post_status_enum', native_enum=False), server_default=sa.text("'draft'"), nullable=False),
     sa.Column('updated_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), nullable=False),
     sa.Column('published_at', sa.TIMESTAMP(), nullable=True),
@@ -89,6 +109,44 @@ def upgrade() -> None:
     )
     op.create_index('idx_forum_posts_area_status', 'forum_posts', ['area_id', 'status'], unique=False)
     op.create_index('idx_forum_posts_author', 'forum_posts', ['author_user_id'], unique=False)
+    op.create_table('gems',
+    sa.Column('category_id', sa.CHAR(length=36), nullable=True),
+    sa.Column('area_id', sa.CHAR(length=36), nullable=True),
+    sa.Column('created_by_user_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('title', sa.String(length=180), nullable=False),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('instructions', sa.Text(), nullable=False),
+    sa.Column('icon_url', sa.Text(), nullable=True),
+    sa.Column('conversation_starters', sa.JSON(), nullable=True),
+    sa.Column('visibility', sa.Enum('PRIVATE', 'SHARED', 'PUBLIC', name='gem_visibility_enum', native_enum=False), server_default=sa.text("'public'"), nullable=False),
+    sa.Column('is_featured', sa.Boolean(), server_default=sa.text('0'), nullable=False),
+    sa.Column('status', sa.Enum('DRAFT', 'PUBLISHED', 'ARCHIVED', name='gem_status_enum', native_enum=False), server_default=sa.text("'draft'"), nullable=False),
+    sa.Column('usage_count', sa.Integer(), server_default=sa.text('0'), nullable=False),
+    sa.Column('updated_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'), nullable=False),
+    sa.Column('id', sa.CHAR(length=36), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.ForeignKeyConstraint(['area_id'], ['areas.id'], onupdate='CASCADE', ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['category_id'], ['gem_categories.id'], onupdate='CASCADE', ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['created_by_user_id'], ['users.id'], onupdate='CASCADE', ondelete='RESTRICT'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('idx_gems_area_status', 'gems', ['area_id', 'status'], unique=False)
+    op.create_index('idx_gems_category', 'gems', ['category_id'], unique=False)
+    op.create_index('idx_gems_created_by', 'gems', ['created_by_user_id'], unique=False)
+    op.create_index('idx_gems_featured', 'gems', ['is_featured', 'status'], unique=False)
+    op.create_table('sessions',
+    sa.Column('id', sa.String(length=64), nullable=False),
+    sa.Column('user_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.Column('expires_at', sa.TIMESTAMP(), nullable=False),
+    sa.Column('last_activity_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.Column('user_agent', sa.Text(), nullable=True),
+    sa.Column('ip_address', sa.String(length=45), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index('idx_sessions_expires_at', 'sessions', ['expires_at'], unique=False)
+    op.create_index('idx_sessions_user_id', 'sessions', ['user_id'], unique=False)
     op.create_table('user_badges',
     sa.Column('user_id', sa.CHAR(length=36), nullable=False),
     sa.Column('badge_id', sa.CHAR(length=36), nullable=False),
@@ -108,6 +166,43 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['role_id'], ['roles.id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('user_id', 'role_id')
+    )
+    op.create_table('course_assignments',
+    sa.Column('course_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('assigned_by_user_id', sa.CHAR(length=36), nullable=True),
+    sa.Column('assigned_to_user_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('due_date', sa.TIMESTAMP(), nullable=False),
+    sa.Column('id', sa.CHAR(length=36), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.ForeignKeyConstraint(['assigned_by_user_id'], ['users.id'], onupdate='CASCADE', ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['assigned_to_user_id'], ['users.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['course_id'], ['courses.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('assigned_to_user_id', 'course_id', name='uq_course_assignments_user_course')
+    )
+    op.create_index('idx_course_assignments_assigned_by', 'course_assignments', ['assigned_by_user_id'], unique=False)
+    op.create_index('idx_course_assignments_due_date', 'course_assignments', ['due_date'], unique=False)
+    op.create_table('course_badges',
+    sa.Column('course_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('badge_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('progress_percentage', sa.DECIMAL(precision=5, scale=2), server_default=sa.text('100.00'), nullable=False),
+    sa.Column('id', sa.CHAR(length=36), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.ForeignKeyConstraint(['badge_id'], ['badges.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['course_id'], ['courses.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('course_id', 'badge_id', name='uq_course_badges_course_badge')
+    )
+    op.create_table('course_gems',
+    sa.Column('course_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('gem_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('sort_order', sa.Integer(), server_default=sa.text('0'), nullable=False),
+    sa.Column('id', sa.CHAR(length=36), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.ForeignKeyConstraint(['course_id'], ['courses.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['gem_id'], ['gems.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('course_id', 'gem_id', name='uq_course_gems_course_gem')
     )
     op.create_table('course_modules',
     sa.Column('course_id', sa.CHAR(length=36), nullable=False),
@@ -148,6 +243,31 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['post_id'], ['forum_posts.id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('gem_area_links',
+    sa.Column('gem_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('area_id', sa.CHAR(length=36), nullable=False),
+    sa.ForeignKeyConstraint(['area_id'], ['areas.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['gem_id'], ['gems.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('gem_id', 'area_id')
+    )
+    op.create_table('gem_tag_links',
+    sa.Column('gem_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('tag_id', sa.CHAR(length=36), nullable=False),
+    sa.ForeignKeyConstraint(['gem_id'], ['gems.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['tag_id'], ['gem_tags.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('gem_id', 'tag_id')
+    )
+    op.create_table('user_gem_collection',
+    sa.Column('user_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('gem_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('saved_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.Column('notes', sa.Text(), nullable=True),
+    sa.Column('id', sa.CHAR(length=36), nullable=False),
+    sa.ForeignKeyConstraint(['gem_id'], ['gems.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('user_id', 'gem_id', name='uq_user_gem_collection_user_gem')
+    )
     op.create_table('lessons',
     sa.Column('module_id', sa.CHAR(length=36), nullable=False),
     sa.Column('title', sa.String(length=180), nullable=False),
@@ -180,6 +300,17 @@ def upgrade() -> None:
     op.create_index('idx_analytics_events_lesson', 'analytics_events', ['lesson_id'], unique=False)
     op.create_index('idx_analytics_events_name_time', 'analytics_events', ['event_name', 'event_time'], unique=False)
     op.create_index('idx_analytics_events_user', 'analytics_events', ['user_id'], unique=False)
+    op.create_table('lesson_gems',
+    sa.Column('lesson_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('gem_id', sa.CHAR(length=36), nullable=False),
+    sa.Column('sort_order', sa.Integer(), server_default=sa.text('0'), nullable=False),
+    sa.Column('id', sa.CHAR(length=36), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
+    sa.ForeignKeyConstraint(['gem_id'], ['gems.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['lesson_id'], ['lessons.id'], onupdate='CASCADE', ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('lesson_id', 'gem_id', name='uq_lesson_gems_lesson_gem')
+    )
     op.create_table('lesson_progress',
     sa.Column('enrollment_id', sa.CHAR(length=36), nullable=False),
     sa.Column('lesson_id', sa.CHAR(length=36), nullable=False),
@@ -215,6 +346,7 @@ def downgrade() -> None:
     # ### commands auto generated by Alembic - please adjust! ###
     op.drop_table('lesson_resources')
     op.drop_table('lesson_progress')
+    op.drop_table('lesson_gems')
     op.drop_index('idx_analytics_events_user', table_name='analytics_events')
     op.drop_index('idx_analytics_events_name_time', table_name='analytics_events')
     op.drop_index('idx_analytics_events_lesson', table_name='analytics_events')
@@ -222,17 +354,35 @@ def downgrade() -> None:
     op.drop_index('idx_analytics_events_area', table_name='analytics_events')
     op.drop_table('analytics_events')
     op.drop_table('lessons')
+    op.drop_table('user_gem_collection')
+    op.drop_table('gem_tag_links')
+    op.drop_table('gem_area_links')
     op.drop_table('forum_comments')
     op.drop_table('enrollments')
     op.drop_table('course_modules')
+    op.drop_table('course_gems')
+    op.drop_table('course_badges')
+    op.drop_index('idx_course_assignments_due_date', table_name='course_assignments')
+    op.drop_index('idx_course_assignments_assigned_by', table_name='course_assignments')
+    op.drop_table('course_assignments')
     op.drop_table('user_roles')
     op.drop_table('user_badges')
+    op.drop_index('idx_sessions_user_id', table_name='sessions')
+    op.drop_index('idx_sessions_expires_at', table_name='sessions')
+    op.drop_table('sessions')
+    op.drop_index('idx_gems_featured', table_name='gems')
+    op.drop_index('idx_gems_created_by', table_name='gems')
+    op.drop_index('idx_gems_category', table_name='gems')
+    op.drop_index('idx_gems_area_status', table_name='gems')
+    op.drop_table('gems')
     op.drop_index('idx_forum_posts_author', table_name='forum_posts')
     op.drop_index('idx_forum_posts_area_status', table_name='forum_posts')
     op.drop_table('forum_posts')
     op.drop_table('courses')
     op.drop_table('users')
     op.drop_table('roles')
+    op.drop_table('gem_tags')
+    op.drop_table('gem_categories')
     op.drop_table('badges')
     op.drop_table('areas')
     # ### end Alembic commands ###
