@@ -21,11 +21,12 @@ class UserRead(UserBase):
 
 
 class UserProfileRead(UserBase):
-    """Enriched user profile with area, role, and created_at."""
+    """Enriched user profile with area, roles, and created_at."""
     id: str
     status: str
     area_name: str | None = None
-    role_name: str | None = None
+    role_name: str | None = None  # Kept for backward compatibility (primary role)
+    role_names: list[str] = []    # All roles assigned to the user
     created_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)

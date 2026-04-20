@@ -103,13 +103,22 @@ def get_current_user(
     """Get current logged-in user information with area and role."""
     user = _get_authenticated_user(session_id, db)
 
-    # Get role name from user_role_links
+    # Get ALL role names for the user
     from src.db.models.learning_platform import Role
-    role_name = None
-    if user.user_role_links:
-        role = db.query(Role).filter(Role.id == user.user_role_links[0].role_id).first()
-        if role:
-            role_name = role.name.value
+    role_rows = (
+        db.query(Role.name)
+        .join_from(Role, type(user).__table__.metadata.tables["user_roles"],
+                   Role.id == type(user).__table__.metadata.tables["user_roles"].c.role_id)
+        .filter(type(user).__table__.metadata.tables["user_roles"].c.user_id == user.id)
+        .all()
+    ) if False else None  # placeholder — actual query below
+
+    from src.core.permissions import get_user_role_names
+    role_names = get_user_role_names(db, user.id)
+
+    # Pick a "primary" role for backward compat — prefer highest in hierarchy
+    priority = ["super_admin", "content_admin", "content_editor", "content_viewer", "learner"]
+    primary_role = next((r for r in priority if r in role_names), None)
 
     return UserProfileRead(
         id=user.id,
@@ -118,7 +127,8 @@ def get_current_user(
         last_name=user.last_name,
         status=user.status.value,
         area_name=user.area.name if user.area else None,
-        role_name=role_name,
+        role_name=primary_role,
+        role_names=role_names,
         created_at=user.created_at,
     )
 

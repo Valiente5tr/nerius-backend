@@ -18,7 +18,9 @@ class UserStatus(str, enum.Enum):
 
 class RoleName(str, enum.Enum):
     SUPER_ADMIN = "super_admin"
-    CONTENT_ADMIN = "content_admin"
+    CONTENT_ADMIN = "content_admin"      # Rol 1: admin completo (crear/publicar/editar)
+    CONTENT_EDITOR = "content_editor"    # Rol 2: solo editar cursos existentes (no crear ni publicar)
+    CONTENT_VIEWER = "content_viewer"    # Rol 3: sin acceso a cursos (solo dashboard)
     LEARNER = "learner"
 
 
