@@ -90,12 +90,22 @@ def seed_database():
             name=RoleName.CONTENT_ADMIN,
             created_at=datetime.utcnow(),
         )
+        role_editor = Role(
+            id=generate_uuid(),
+            name=RoleName.CONTENT_EDITOR,
+            created_at=datetime.utcnow(),
+        )
+        role_viewer = Role(
+            id=generate_uuid(),
+            name=RoleName.CONTENT_VIEWER,
+            created_at=datetime.utcnow(),
+        )
         role_user = Role(
             id=generate_uuid(),
             name=RoleName.LEARNER,
             created_at=datetime.utcnow(),
         )
-        db.add_all([role_super_admin, role_admin, role_user])
+        db.add_all([role_super_admin, role_admin, role_editor, role_viewer, role_user])
         db.flush()
 
         # Create users
@@ -120,6 +130,30 @@ def seed_database():
             password=hash_password("password123"),
             status=UserStatus.active,
             gender="Female",
+            created_at=datetime.utcnow(),
+        )
+
+        user_editor = User(
+            id=generate_uuid(),
+            area_id=area_business.id,
+            email="editor@example.com",
+            first_name="Elena",
+            last_name="Editor",
+            password=hash_password("password123"),
+            status=UserStatus.active,
+            gender="Female",
+            created_at=datetime.utcnow(),
+        )
+
+        user_viewer = User(
+            id=generate_uuid(),
+            area_id=area_tech.id,
+            email="viewer@example.com",
+            first_name="Víctor",
+            last_name="Viewer",
+            password=hash_password("password123"),
+            status=UserStatus.active,
+            gender="Male",
             created_at=datetime.utcnow(),
         )
 
@@ -186,6 +220,8 @@ def seed_database():
         db.add_all([
             user_super_admin,
             user_admin,
+            user_editor,
+            user_viewer,
             user_learner,
             user_learner_2,
             user_learner_3,
@@ -203,6 +239,16 @@ def seed_database():
         user_role_admin = UserRole(
             user_id=user_admin.id,
             role_id=role_admin.id,
+            created_at=datetime.utcnow(),
+        )
+        user_role_editor = UserRole(
+            user_id=user_editor.id,
+            role_id=role_editor.id,
+            created_at=datetime.utcnow(),
+        )
+        user_role_viewer = UserRole(
+            user_id=user_viewer.id,
+            role_id=role_viewer.id,
             created_at=datetime.utcnow(),
         )
         user_role_user = UserRole(
@@ -230,14 +276,25 @@ def seed_database():
             role_id=role_user.id,
             created_at=datetime.utcnow(),
         )
+        # Every user gets the learner role by default (in addition to any admin role)
+        admin_users_learner_base = [
+            UserRole(user_id=user_super_admin.id, role_id=role_user.id, created_at=datetime.utcnow()),
+            UserRole(user_id=user_admin.id, role_id=role_user.id, created_at=datetime.utcnow()),
+            UserRole(user_id=user_editor.id, role_id=role_user.id, created_at=datetime.utcnow()),
+            UserRole(user_id=user_viewer.id, role_id=role_user.id, created_at=datetime.utcnow()),
+        ]
+
         db.add_all([
             user_role_super,
             user_role_admin,
+            user_role_editor,
+            user_role_viewer,
             user_role_user,
             user_role_user_2,
             user_role_user_3,
             user_role_user_4,
             user_role_user_5,
+            *admin_users_learner_base,
         ])
         db.flush()
 
@@ -1699,6 +1756,8 @@ def seed_database():
         print("\n📝 Mock Users Created:")
         print("  - Super Admin: superadmin@example.com (password: password123)")
         print("  - Content Admin: admin@example.com (password: password123)")
+        print("  - Content Editor: editor@example.com (password: password123)")
+        print("  - Content Viewer: viewer@example.com (password: password123)")
         print("  - Learner: user@example.com (password: password123)")
         print("  - Learner: diego.herrera@example.com (password: password123)")
         print("  - Learner: maria.gomez@example.com (password: password123)")
