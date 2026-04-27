@@ -633,6 +633,7 @@ class ForumPost(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     )
     title: Mapped[str] = mapped_column(String(180), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str | None] = mapped_column(String(80), nullable=True)
     multimedia_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[PublicationStatus] = mapped_column(
         Enum(PublicationStatus, name="forum_post_status_enum", native_enum=False),
