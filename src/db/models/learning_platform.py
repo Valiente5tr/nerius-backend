@@ -4,7 +4,7 @@ import enum
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BIGINT, CHAR, DECIMAL, JSON, TIMESTAMP, Boolean, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import BIGINT, CHAR, DECIMAL, JSON, TIMESTAMP, Boolean, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.db.models.base import Base
@@ -297,7 +297,8 @@ class Course(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP,
         nullable=False,
-        server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
+        server_default=func.now(),
+        onupdate=func.now(),
     )
     access_type: Mapped[CourseAccessType] = mapped_column(
         Enum(CourseAccessType, name="course_access_type_enum", native_enum=False),
@@ -641,7 +642,8 @@ class ForumPost(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP,
         nullable=False,
-        server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
+        server_default=func.now(),
+        onupdate=func.now(),
     )
     published_at: Mapped[datetime | None] = mapped_column(TIMESTAMP, nullable=True)
 
@@ -812,7 +814,8 @@ class Gem(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP,
         nullable=False,
-        server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     category: Mapped[GemCategory | None] = relationship(back_populates="gems")
@@ -992,7 +995,8 @@ class Quiz(UUIDPrimaryKeyMixin, CreatedAtMixin, Base):
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP,
         nullable=False,
-        server_default=text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"),
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     lesson: Mapped[Lesson] = relationship(back_populates="quiz")
