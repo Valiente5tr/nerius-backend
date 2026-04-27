@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload
 
 from src.core.auth import authenticate_user, create_session, validate_session, invalidate_session
 from src.db.session import get_db
-from src.schemas.user import LoginRequest, LoginResponse, UserRead, UserProfileRead, UserStatsRead
+from src.schemas.user import LoginRequest, LoginResponse, UserRead, UserProfileRead, UserStatsRead, UserUpdateRequest
 
 router = APIRouter(tags=["auth"])
 
@@ -117,6 +117,41 @@ def get_current_user(
     role_names = get_user_role_names(db, user.id)
 
     # Pick a "primary" role for backward compat — prefer highest in hierarchy
+    priority = ["super_admin", "content_admin", "content_editor", "content_viewer", "learner"]
+    primary_role = next((r for r in priority if r in role_names), None)
+
+    return UserProfileRead(
+        id=user.id,
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        status=user.status.value,
+        area_name=user.area.name if user.area else None,
+        role_name=primary_role,
+        role_names=role_names,
+        created_at=user.created_at,
+    )
+
+
+@router.patch("/me", response_model=UserProfileRead)
+def update_current_user(
+    body: UserUpdateRequest,
+    session_id: str | None = Cookie(None),
+    db: Session = Depends(get_db),
+):
+    """Update first_name and/or last_name of the current user."""
+    user = _get_authenticated_user(session_id, db)
+
+    if body.first_name is not None:
+        user.first_name = body.first_name.strip()
+    if body.last_name is not None:
+        user.last_name = body.last_name.strip()
+
+    db.commit()
+    db.refresh(user)
+
+    from src.core.permissions import get_user_role_names
+    role_names = get_user_role_names(db, user.id)
     priority = ["super_admin", "content_admin", "content_editor", "content_viewer", "learner"]
     primary_role = next((r for r in priority if r in role_names), None)
 
